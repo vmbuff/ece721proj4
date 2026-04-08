@@ -1,7 +1,7 @@
 #include "pipeline.h"
 
 
-// Project 4 - VPU Support
+// Project 4 - Value Prediction
 // This function checks value-prediction eligibility.
 // predINTALU, predFPALU, and predLOAD are all "bool" types,
 // and are configured to be true or false based on corresponding
@@ -147,6 +147,9 @@ void pipeline_t::rename2() {
    }
    // FIX_ME #2 END
 
+   // Project 4 - Value Prediction
+   // Insert VPQ stall condition
+
    //
    // Sufficient resources are available to rename the rename bundle.
    //
@@ -216,6 +219,25 @@ void pipeline_t::rename2() {
          PAY.buf[index].branch_ID = REN->checkpoint();
       }
       // FIX_ME #5 END
+
+
+      // Project 4 - Value Prediction
+      // Initialize to not predicted
+      PAY.buf[index].vp_pred = false;
+      PAY.buf[index].vp_val  = 0;
+
+      // Check if instruction is eligible for value prediction
+      // good_instruction indicates that the instruction is on the correct control path
+      if(is_eligible(&PAY.buf[index]) && PAY.buf[index].good_instruction) {
+         // Check actual value (perfect value prediction)
+         db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);         
+
+         // If valid, update the payload fields appropriately
+         if(actual && actual->a_rdst[0].valid) {
+            PAY.buf[index].vp_pred = true;
+            PAY.buf[index].vp_val  = actual->a_rdst[0].value;
+         }
+      }
    }
 
    //
