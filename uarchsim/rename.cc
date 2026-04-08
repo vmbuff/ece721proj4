@@ -1,6 +1,36 @@
 #include "pipeline.h"
 
 
+// Project 4 - VPU Support
+// This function checks value-prediction eligibility.
+// predINTALU, predFPALU, and predLOAD are all "bool" types,
+// and are configured to be true or false based on corresponding
+// simulator arguments being 1 or 0, respectively.
+bool pipeline_t::is_eligible(payload_t *pay) {
+   // Any instruction without a destination register is ineligible.
+   if (!pay->C_valid)
+      return(false);          
+
+   // If we reached this point, the instruction has a destination register.
+
+   // instr. is INTALU type. It is eligible if predINTALU is configured "true".
+   if (IS_INTALU(pay->flags))
+      return(predINTALU);
+
+   // instr. is FPALU type. It is eligible if predFPALU is configured "true".
+   else if (IS_FPALU(pay->flags))
+      return(predFPALU);  
+
+   // instr. is a normal LOAD (not rare load-with-reserv). It is eligible if predLOAD is configured "true".
+   else if (IS_LOAD(pay->flags) && !IS_AMO(pay->flags))
+      return(predLOAD); 
+
+   // instr. is none of the above major types, so it is never eligible  
+   else
+      return(false);      
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////////
 // The Rename Stage has two sub-stages:
 // rename1: Get the next rename bundle from the FQ.
