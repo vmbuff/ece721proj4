@@ -375,6 +375,40 @@ static void config_RAS(const char *config) {
          break;
       }
    }
+
+   
+   // Project 4 - Value Prediction
+   // Set up perfect value prediction mode
+   static void set_vp_perf(const char *config) {
+      // Holds parsed command line argument for whether perfect value prediction is enabled or not 
+      uint64_t enable;
+
+      // If incorrect usage of --vp-perf flag, print usage message and exit
+      if (sscanf(config, "%lu", &enable) != 1) {
+         fprintf(stderr, "Incorrect usage: --vp-perf=<enable>, where <enable> is 0 or 1 to disable or enable perfect value prediction, respectively.\n");
+         exit(-1);
+      // If correct usage, set PERFECT_VALUE_PRED flag based on the parsed value of enable
+      } else {
+         PERFECT_VALUE_PRED = (enable ? true : false);
+      }
+   }
+
+   // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction
+   static void set_vp_eligible(const char *config) {
+      // Holds parsed command line arguments for the eligibility of integer ALU, floating-point ALU, and load instructions for value prediction
+      uint64_t intalu, fpalu, load;
+
+      // If incorrect usage of --vp-eligible flag, print usage message and exit
+      if (sscanf(config, "%lu,%lu,%lu", &intalu, &fpalu, &load) != 3) {
+         fprintf(stderr, "Incorrect usage: --vp-eligible=<predINTALU>,<predFPALU>,<predLOAD>, where each of <predINTALU>, <predFPALU>, and <predLOAD> is 0 or 1 to disable or enable eligibility for value prediction for that instruction type, respectively.\n");
+         exit(-1);
+      // If correct usage, set the eligibility of each instruction type for value prediction based on the parsed values of intalu, fpalu, and load
+      } else {
+         predINTALU = (intalu ? true : false);
+         predFPALU = (fpalu ? true : false);
+         predLOAD = (load ? true : false);
+      }
+   }
 }
 
 /* exit when this becomes non-zero */
@@ -425,6 +459,13 @@ int main(int argc, char **argv) {
    parser.option(0, "MEMLAT", 1, [&](const char *s) { L1_IC_MISS_LATENCY = L1_DC_MISS_LATENCY = L2_MISS_LATENCY = atoi(s); });
    parser.option(0, "perf", 1, [&](const char *s) { set_perfect_flags(s); });
    parser.option(0, "cp", 1, [&](const char *s) { NUM_CHECKPOINTS = atoi(s); });
+
+   // Project 4 - Value Prediction
+   // Add command line options for value prediction configuration
+   // --vp-perf to specify whether perfect value prediction is enabled or not
+   parser.option(0, "vp-perf", 1, [&](const char *s) { set_vp_perf(s); });
+   // --vp-eligible to specify which instruction types are eligible for value prediction (integer ALU, floating-point ALU, and/or load instructions)
+   parser.option(0, "vp-eligible", 1, [&](const char *s) { set_vp_eligible(s); });
 
    parser.option(0, "bq", 1, [&](const char *s) {BQ_SIZE = atoi(s); AUTO_BQ_SIZE = false; });
    parser.option(0, "btbentries", 1, [&](const char *s) { BTB_ENTRIES = atoi(s); });
