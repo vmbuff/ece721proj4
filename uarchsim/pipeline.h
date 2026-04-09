@@ -2,13 +2,6 @@
 #ifndef _RISCV_PIPELINE_H
 #define _RISCV_PIPELINE_H
 
-
-// Project 4 - Value Prediction
-// Define additional macros to determine instruction type
-#define IS_INTALU(flags)   ((flags) & (F_ICOMP))      // Integer ALU instructions
-#define IS_FPALU(flags)    ((flags) & (F_FCOMP))      // Floating-point ALU instructions
-
-
 #include "processor.h"
 #include "decode.h"
 #include "config.h"
@@ -86,6 +79,11 @@
 #define IS_FP_OP(flags) ((flags) & (F_FCOMP | F_FMEM))
 #define IS_AMO(flags) ((flags) & (F_AMO))
 #define IS_CSR(flags) ((flags) & (F_CSR))
+
+// Project 4 - Value Prediction
+// Define additional macros to determine instruction type
+#define IS_INTALU(flags)   ((flags) & (F_ICOMP))      // Integer ALU instructions
+#define IS_FPALU(flags)    ((flags) & (F_FCOMP))      // Floating-point ALU instructions
 
 //////////////////////////////////////////////////////////////////////////////
 
