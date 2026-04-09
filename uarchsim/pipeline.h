@@ -80,6 +80,11 @@
 #define IS_AMO(flags) ((flags) & (F_AMO))
 #define IS_CSR(flags) ((flags) & (F_CSR))
 
+// Project 4 - Value Prediction
+// Define additional macros to determine instruction type
+#define IS_INTALU(flags)   ((flags) & (F_ICOMP))      // Integer ALU instructions
+#define IS_FPALU(flags)    ((flags) & (F_FCOMP))      // Floating-point ALU instructions
+
 //////////////////////////////////////////////////////////////////////////////
 
 #define SOURCE1(in) (in.rs1())
@@ -404,6 +409,10 @@ public:
    void set_load_violation(unsigned int al_index);
    void set_branch_misprediction(unsigned int al_index);
    void set_value_misprediction(unsigned int al_index);
+
+   // Project 4 - Value Prediction
+   // Define value-prediction eligibility function
+   bool is_eligible(payload_t *pay);
 
    //TODO: Implement these functions
    // Miscellaneous other functions.

@@ -48,7 +48,11 @@ void pipeline_t::register_read(unsigned int lane_number) {
 
       // FIX_ME #11a BEGIN
       if (PAY.buf[index].C_valid && (lat == 1) && !IS_LOAD(PAY.buf[index].flags) && !IS_AMO(PAY.buf[index].flags)) {
-         IQ.wakeup(PAY.buf[index].C_phys_reg, true);
+         // Project 4 - Value Prediction
+         if(!PAY.buf[index].vp_pred) {
+            IQ.wakeup(PAY.buf[index].C_phys_reg, true);
+         }
+
          REN->set_ready(PAY.buf[index].C_phys_reg);
       }
       // FIX_ME #11a END

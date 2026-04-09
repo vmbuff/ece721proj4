@@ -184,6 +184,16 @@ typedef struct {
                            // this is the branch's ID (its bit position
                            // in the Global Branch Mask).
 
+
+   // Project 4 - Value Prediction
+   uint64_t vp_val;        // The predicted value for this instruction's destination register.
+                           // This is only valid if vp_pred is true.
+   bool vp_pred;           // Flag indicating whether instruction was value predicted.
+                           // This is set to true if the following two conditions are met:
+                           // (1) The instruction is eligible for value prediction.
+                           // (2) The value predictor is confident in its prediction.
+
+
    ////////////////////////
    // Set by Dispatch Stage.
    ////////////////////////
@@ -197,7 +207,7 @@ typedef struct {
    unsigned int MDP_RQ_index; // Index into MDP's recovery queue.
    bool MDP_RQ_phase;
 
-   unsigned int lane_id; // Execution lane chosen for the instruction.
+   unsigned int lane_id; // Execution lane chosen for the instruction.    
 
    ////////////////////////
    // Set by Issue Stage.
