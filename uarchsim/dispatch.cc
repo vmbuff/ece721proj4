@@ -198,7 +198,16 @@ void pipeline_t::dispatch() {
 
       // FIX_ME #9 BEGIN
       if (PAY.buf[index].C_valid) {
-         REN->clear_ready(PAY.buf[index].C_phys_reg);
+         // Project 4 - Value Prediction
+         // If instruction is value predicted, set the ready bit and write the predicted value
+         // into the physical destination register
+         if(PAY.buf[index].vp_pred) {
+            REN->set_ready(PAY.buf[index].C_phys_reg);
+            REN->write(PAY.buf[index].C_phys_reg, PAY.buf[index].vp_val);
+         // If instruction is not value predicted, clear the ready bit
+         } else {
+            REN->clear_ready(PAY.buf[index].C_phys_reg);
+         }
       }
       // FIX_ME #9 END
 
