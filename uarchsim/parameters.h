@@ -106,6 +106,12 @@ extern unsigned int IBP_PC_LENGTH;
 extern unsigned int IBP_BHR_LENGTH;
 extern bool ENABLE_TRACE_CACHE;
 
+// Project 4 - Value Prediction
+extern bool PERFECT_VALUE_PRED;     // If true, use perfect value prediction mode
+extern bool predINTALU;             // If true, instr. is INTALU type and eligible to be value predicted
+extern bool predFPALU;              // If true, instr. is FPALU type and eligible to be value predicted
+extern bool predLOAD;               // If true, instr. is a normal LOAD and eligible to be value predicted
+
 // Benchmark control.
 extern bool logging_on;
 extern int64_t logging_on_at;

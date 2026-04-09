@@ -140,6 +140,12 @@ unsigned int IBP_PC_LENGTH = 20;
 unsigned int IBP_BHR_LENGTH = 16;
 bool ENABLE_TRACE_CACHE = false;
 
+// Project 4 - Value Prediction
+bool PERFECT_VALUE_PRED = false;    // If true, use perfect value prediction mode
+bool predINTALU = false;            // If true, instr. is INTALU type and eligible to be value predicted
+bool predFPALU = false;             // If true, instr. is FPALU type and eligible to be value predicted
+bool predLOAD = false;              // If true, instr. is a normal LOAD and eligible to be value predicted
+
 // Benchmark control.
 bool logging_on = false;
 int64_t logging_on_at = -2; //0xfffffffffffffffe
