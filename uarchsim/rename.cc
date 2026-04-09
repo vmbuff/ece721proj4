@@ -226,16 +226,19 @@ void pipeline_t::rename2() {
       PAY.buf[index].vp_pred = false;
       PAY.buf[index].vp_val  = 0;
 
-      // Check if instruction is eligible for value prediction
-      // good_instruction indicates that the instruction is on the correct control path
-      if(is_eligible(&PAY.buf[index]) && PAY.buf[index].good_instruction) {
-         // Check actual value (perfect value prediction)
-         db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);         
+      // Only attempt value prediction if enabled (only perfect value prediction for now)
+      if(PERFECT_VALUE_PRED) {
+         // Check if instruction is eligible for value prediction
+         // good_instruction indicates that the instruction is on the correct control path
+         if(is_eligible(&PAY.buf[index]) && PAY.buf[index].good_instruction) {
+            // Check actual value (perfect value prediction)
+            db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);         
 
-         // If valid, update the payload fields appropriately
-         if(actual && actual->a_rdst[0].valid) {
-            PAY.buf[index].vp_pred = true;
-            PAY.buf[index].vp_val  = actual->a_rdst[0].value;
+            // If valid, update the payload fields appropriately
+            if(actual && actual->a_rdst[0].valid) {
+               PAY.buf[index].vp_pred = true;
+               PAY.buf[index].vp_val  = actual->a_rdst[0].value;
+            }
          }
       }
    }
