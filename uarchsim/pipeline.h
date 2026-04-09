@@ -410,6 +410,10 @@ public:
    void set_branch_misprediction(unsigned int al_index);
    void set_value_misprediction(unsigned int al_index);
 
+   // Project 4 - Value Prediction
+   // Define value-prediction eligibility function
+   bool is_eligible(payload_t *pay);
+
    //TODO: Implement these functions
    // Miscellaneous other functions.
    //void next_cycle();
