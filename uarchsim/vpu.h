@@ -45,7 +45,7 @@ private:
         bool         confident;       // conf == conf_max at prediction time
     };
 
-    // SVP table, 2^(index_bits) entries, direct mapped
+    // SVP table, (1U << index_bits) entries, direct mapped. Use 1U to avoid int overflow.
     svp_entry_t *svp;
     unsigned int svp_num_entries;
     unsigned int svp_index_bits;
@@ -113,6 +113,10 @@ public:
     // get_vpq_tail(): called from rename2() at checkpoint creation
     // Save this alongside branch checkpoint so repair() can restore it on misp.
     unsigned int get_vpq_tail();
+
+    // get_vpq_head(): called from squash.cc for squash_complete.
+    // After a full squash, repair() target is vpq_head (discard everything in flight).
+    unsigned int get_vpq_head();
 
     // print_storage(): end of simulation, SVP cost accounting
     // bits/entry = tag + 64(stride) + 64(retired_value) + ceil(log2(vpq_size+1)) + ceil(log2(conf_max+1))

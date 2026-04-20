@@ -146,6 +146,14 @@ bool predINTALU = false;            // If true, instr. is INTALU type and eligib
 bool predFPALU = false;             // If true, instr. is FPALU type and eligible to be value predicted
 bool predLOAD = false;              // If true, instr. is a normal LOAD and eligible to be value predicted
 
+// SVP configuration (defaults, overridden by --vp-svp CLI, Vince Task V5)
+bool SVP_ENABLED = false;
+bool SVP_ORACLE_CONF = false;
+unsigned int VPQ_SIZE = 256;
+unsigned int SVP_INDEX_BITS = 10;
+unsigned int SVP_TAG_BITS = 0;
+unsigned int SVP_CONF_MAX = 7;
+
 // Benchmark control.
 bool logging_on = false;
 int64_t logging_on_at = -2; //0xfffffffffffffffe

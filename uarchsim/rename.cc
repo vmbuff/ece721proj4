@@ -148,7 +148,18 @@ void pipeline_t::rename2() {
    // FIX_ME #2 END
 
    // Project 4 - Value Prediction
-   // Insert VPQ stall condition
+   // VPQ stall condition: count VP-eligible instrs in the bundle,
+   // stall if VPQ doesn't have enough free entries for all of them.
+   if (VPU) {
+      unsigned int bundle_vp_eligible = 0;
+      for (unsigned int k = 0; k < dispatch_width; k++) {
+         if (!RENAME2[k].valid) break;
+         if (is_eligible(&PAY.buf[RENAME2[k].index]))
+            bundle_vp_eligible++;
+      }
+      if (VPU->vpq_free_entries() < bundle_vp_eligible)
+         return;
+   }
 
    //
    // Sufficient resources are available to rename the rename bundle.
@@ -217,27 +228,75 @@ void pipeline_t::rename2() {
       // FIX_ME #5 BEGIN
       if(PAY.buf[index].checkpoint) {
          PAY.buf[index].branch_ID = REN->checkpoint();
+
+         // Project 4: save VPQ tail so squash.cc can repair() to this point
+         // on a branch misprediction. Indexed by branch_ID.
+         if (VPU)
+            vpq_tail_chkpt[PAY.buf[index].branch_ID] = VPU->get_vpq_tail();
       }
       // FIX_ME #5 END
 
 
       // Project 4 - Value Prediction
-      // Initialize to not predicted
-      PAY.buf[index].vp_pred = false;
-      PAY.buf[index].vp_val  = 0;
+      // Initialize all VP payload fields to defaults
+      PAY.buf[index].vp_pred      = false;
+      PAY.buf[index].vp_val       = 0;
+      PAY.buf[index].vp_eligible  = false;
+      PAY.buf[index].vp_svp_hit   = false;
+      PAY.buf[index].vp_confident = false;
+      PAY.buf[index].vpq_index    = 0;
 
-      // Only attempt value prediction if enabled (only perfect value prediction for now)
-      if(PERFECT_VALUE_PRED) {
-         // Check if instruction is eligible for value prediction
-         // good_instruction indicates that the instruction is on the correct control path
-         if(is_eligible(&PAY.buf[index]) && PAY.buf[index].good_instruction) {
-            // Check actual value (perfect value prediction)
-            db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);         
+      if (is_eligible(&PAY.buf[index])) {
+         PAY.buf[index].vp_eligible = true;
 
-            // If valid, update the payload fields appropriately
-            if(actual && actual->a_rdst[0].valid) {
-               PAY.buf[index].vp_pred = true;
-               PAY.buf[index].vp_val  = actual->a_rdst[0].value;
+         if (PERFECT_VALUE_PRED) {
+            // Perfect VP: use functional sim to get the exact correct value.
+            // good_instruction required here (only predict on-path instrs in oracle modes).
+            if (PAY.buf[index].good_instruction) {
+               db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);
+               if (actual && actual->a_rdst[0].valid) {
+                  PAY.buf[index].vp_pred = true;
+                  PAY.buf[index].vp_val  = actual->a_rdst[0].value;
+               }
+            }
+         }
+         else if (VPU) {
+            // Real SVP prediction
+            uint64_t predicted_val;
+            bool confident;
+            unsigned int vpq_idx;
+
+            bool hit = VPU->predict(PAY.buf[index].pc, predicted_val,
+                                    confident, vpq_idx);
+
+            PAY.buf[index].vpq_index  = vpq_idx;
+            PAY.buf[index].vp_svp_hit = hit;
+
+            if (hit) {
+               // Always store predicted value (even unconfident) so retire can
+               // check correctness for all vpmeas stat categories.
+               PAY.buf[index].vp_val = predicted_val;
+
+               if (SVP_ORACLE_CONF) {
+                  // Oracle confidence: override SVP's confidence with whether the
+                  // prediction is actually correct (checked against functional sim).
+                  // good_instruction is allowed here (oracle mode only).
+                  confident = false;
+                  if (PAY.buf[index].good_instruction) {
+                     db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);
+                     if (actual && actual->a_rdst[0].valid)
+                        confident = (predicted_val == actual->a_rdst[0].value);
+                  }
+               }
+               // IMPORTANT: in real confidence mode (not oracle), we do NOT touch
+               // good_instruction at all. Even wrong-path instrs get predicted.
+               // Spec deducts points if good_instruction appears in the real conf path.
+
+               PAY.buf[index].vp_confident = confident;
+               if (confident) {
+                  PAY.buf[index].vp_pred = true;
+                  // vp_val already set above
+               }
             }
          }
       }

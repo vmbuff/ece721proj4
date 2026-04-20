@@ -42,6 +42,8 @@
 
 #include "lsu.h"               // LOAD/STORE UNIT
 
+#include "vpu.h"               // VALUE PREDICTION UNIT (SVP + VPQ)
+
 #include "debug.h"
 
 #include "stats.h"
@@ -354,6 +356,18 @@ private:
    // Load and Store Unit.
    /////////////////////////////////////////////////////////////
    lsu LSU;
+
+   /////////////////////////////////////////////////////////////
+   // Value Prediction Unit (SVP + VPQ).
+   // Instantiated in pipeline.cc when SVP_ENABLED is true.
+   /////////////////////////////////////////////////////////////
+   vpu_t *VPU;
+
+   // VPQ tail snapshots for branch checkpoint recovery.
+   // Indexed by branch_ID. Saved when a checkpoint is created in rename2,
+   // used by repair() in squash.cc when a branch mispredicts.
+   // 64 entries = max unresolved branches (matches GBM width).
+   unsigned int vpq_tail_chkpt[64];
 
    /////////////////////////////////////////////////////////////
    // Unified L2 and L3 caches.

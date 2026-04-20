@@ -8,10 +8,16 @@
 ## Status
 
 - [x] `vpu.h` interface defined (see `uarchsim/vpu.h`)
-- [ ] `vpu.cc` implementation
-- [ ] Payload field additions
-- [ ] All pipeline wiring (rename, execute, retire, squash)
-- [ ] CLI args, stats, storage accounting
+- [x] `vpu.cc` full implementation (predict, train, repair, print_storage)
+- [x] Payload field additions (vp_eligible, vp_svp_hit, vp_confident, vpq_index)
+- [x] Rename wiring (VPQ stall, SVP prediction, oracle conf, VPQ tail checkpoint)
+- [x] Pipeline integration (VPU pointer, include, instantiation, vpq_tail_chkpt array)
+- [x] SVP parameters in parameters.h/cc (defaults, ready for CLI parsing)
+- [ ] execute.cc misprediction detection (Vincent)
+- [ ] retire.cc training + stats (Vincent)
+- [ ] squash.cc repair (Vincent)
+- [ ] CLI args `--vp-svp` in main.cc (Vincent)
+- [ ] stats.cc counter declarations (Vincent)
 
 ---
 
@@ -19,54 +25,50 @@
 
 **Files**: `vpu.h`, `vpu.cc`, `rename.cc`, `payload.h`
 
-### C1: Implement `vpu.cc` (SVP + VPQ logic)
+### C1: Implement `vpu.cc` (SVP + VPQ logic) -- DONE
 
 - [x] Define `vpu.h` with SVP entry, VPQ entry, and public interface
-- [ ] Constructor: allocate SVP table (2^index_bits entries, all invalid) and VPQ (circular buffer, empty)
-- [ ] `get_svp_index()`: `(pc >> 1) & ((1 << index_bits) - 1)`
-- [ ] `get_svp_tag()`: `(pc >> (1 + index_bits)) & ((1 << tag_bits) - 1)`
-- [ ] `tag_matches()`: return true if tag_bits == 0 or tags equal
-- [ ] `count_inflight_instances()`: walk VPQ head to tail, count entries with matching svp_index
-- [ ] `predict()`:
-  - [ ] Look up SVP entry, check valid + tag match
-  - [ ] On hit: compute `retired_value + instance * stride`, check `conf == conf_max`, increment instance
-  - [ ] Always allocate VPQ entry at tail (even on miss, needed for training + repair)
-  - [ ] Return hit/miss
-- [ ] `train()`:
-  - [ ] Tag match path: compute `new_stride = committed_val - retired_value` (int64_t), update stride/conf/retired_value, decrement instance
-  - [ ] Tag miss path: replace entry, init instance via `count_inflight_instances()`
-  - [ ] Free VPQ head entry
-- [ ] `repair()`: walk VPQ backward from tail to restored position, decrement instance for each hit entry, restore tail
-- [ ] `vpq_free_entries()`: derived from head/tail/phase bits (same pattern as renamer FL)
-- [ ] `get_vpq_tail()`: return current tail (saved at checkpoint time for squash repair)
-- [ ] `print_storage()`: `bits/entry = tag + 64 + 64 + ceil(log2(vpq_size+1)) + ceil(log2(conf_max+1))`, print total bytes
+- [x] Constructor: allocate SVP table (2^index_bits entries, all invalid) and VPQ (circular buffer, empty)
+- [x] `get_svp_index()`: `(pc >> 1) & ((1 << index_bits) - 1)`
+- [x] `get_svp_tag()`: `(pc >> (1 + index_bits)) & ((1 << tag_bits) - 1)`
+- [x] `tag_matches()`: return true if tag_bits == 0 or tags equal
+- [x] `count_inflight_instances()`: walk VPQ head to tail, count entries with matching svp_index
+- [x] `predict()`: lookup SVP, compute prediction on hit, increment instance, always allocate VPQ entry
+- [x] `train()`: tag match (update stride/conf/retired_value, decrement instance) or tag miss (replace entry, init instance via walk)
+- [x] `repair()`: walk VPQ backward, decrement instance for each discarded hit entry
+- [x] `vpq_free_entries()`: phase-bit arithmetic
+- [x] `get_vpq_tail()` and `get_vpq_head()`
+- [x] `print_storage()`: SVP bits per entry with valid bit, prints total bytes
 
-### C2: Payload field additions (`payload.h`)
+### C2: Payload field additions (`payload.h`) -- DONE
 
-- [ ] `unsigned int vpq_index` (VPQ entry allocated at rename, used at retire for training)
-- [ ] `bool vp_eligible` (was this instr VP-eligible, for stats)
-- [ ] `bool vp_svp_hit` (did SVP have a prediction, for miss stat)
-- [ ] `bool vp_confident` (was prediction confident, for conf/unconf stat split)
-- [ ] Make `vp_val` always hold the predicted value on SVP hit (even if unconfident), so retire can check correctness for all stat categories
+- [x] `unsigned int vpq_index`
+- [x] `bool vp_eligible`
+- [x] `bool vp_svp_hit`
+- [x] `bool vp_confident`
+- [x] `vp_val` now set on any SVP hit (even unconfident)
 
-### C3: Wire VPU into `rename.cc`
+### C3: Wire VPU into `rename.cc` -- DONE
 
-- [ ] VPQ stall condition at line ~151 (after checkpoint/reg stalls, before rename loop): count VP-eligible instrs in bundle, stall if VPQ doesn't have enough free entries
-- [ ] Replace oracle VP block (lines ~224-243) with SVP path: call `VPU->predict()`, store vpq_index + stat flags in payload, set `vp_pred`/`vp_val` if confident
-- [ ] Keep existing `PERFECT_VALUE_PRED` path intact
-- [ ] Add oracle confidence mode: if `SVP_ORACLE_CONF`, compare SVP prediction against functional sim value, override confidence. `good_instruction` only allowed here and in perfect mode
-- [ ] **CRITICAL**: `good_instruction` must NOT appear in real confidence path. Spec deducts points for this.
+- [x] VPQ stall condition (counts VP-eligible instrs, stalls if VPQ doesn't have enough free entries)
+- [x] SVP prediction path with `VPU->predict()`, stores all stat flags in payload
+- [x] Perfect VP path kept intact
+- [x] Oracle confidence mode: overrides SVP confidence using functional sim check
+- [x] `good_instruction` only in perfect and oracle conf paths, never in real conf path
 
-### C4: VPQ tail checkpointing (`rename.cc`)
+### C4: VPQ tail checkpointing (`rename.cc`) -- DONE
 
-- [ ] At branch checkpoint creation (line ~218-220), call `VPU->get_vpq_tail()` and save it alongside the checkpoint
-- [ ] Coordinate with Vincent on where to store it (renamer checkpoint struct or parallel array indexed by branch_ID)
-- [ ] For `squash_complete`, repair target is just vpq_head (discard everything in flight)
+- [x] At checkpoint creation, saves `VPU->get_vpq_tail()` into `vpq_tail_chkpt[branch_ID]`
+- [x] Stored in `pipeline_t` as `unsigned int vpq_tail_chkpt[64]` (parallel array, avoids touching renamer.h)
+- [x] For squash_complete, Vincent calls `VPU->repair(VPU->get_vpq_head())`
 
-### C5: Pipeline integration (`pipeline.h`)
+### C5: Pipeline integration -- DONE
 
-- [ ] Add `#include "vpu.h"` to `pipeline.h`
-- [ ] Add `vpu_t *VPU` member to `pipeline_t` class
+- [x] `#include "vpu.h"` in `pipeline.h`
+- [x] `vpu_t *VPU` member in `pipeline_t`
+- [x] `vpq_tail_chkpt[64]` array in `pipeline_t`
+- [x] VPU instantiation in `pipeline.cc` constructor (SVP_ENABLED check)
+- [x] SVP parameters declared in `parameters.h/cc` with defaults
 
 ---
 
@@ -134,13 +136,19 @@ Sites:
 
 ## Implementation Order
 
-**Chris**:
+**Chris** -- ALL DONE, build passes:
 1. ~~Write `vpu.h`~~ Done
-2. Add payload fields to `payload.h`
-3. Implement `vpu.cc` (predict + train first, then repair)
-4. Wire into `rename.cc` (VPQ stall + predict call)
-5. VPQ tail checkpoint save
-6. Test with oracle confidence (no mispredictions expected)
+2. ~~Add payload fields to `payload.h`~~ Done
+3. ~~Implement `vpu.cc`~~ Done
+4. ~~Wire into `rename.cc`~~ Done
+5. ~~VPQ tail checkpoint save~~ Done
+6. Test independently (before Vincent's code is merged):
+   - [x] Build succeeds with `vpu.cc` included (glob picks it up)
+   - [ ] Perfect VP mode still works (no regressions from payload/rename changes)
+   - [ ] SVP + oracle confidence: predictions happen, VPQ allocates/frees, no crashes. recovery_count = 0 since only correct predictions injected
+   - [ ] SVP + real confidence with misprediction detection stubbed (no `set_value_misprediction` calls yet): predictions inject, dependents schedule early, but mispredictions silently produce wrong values. IPC will be wrong but no crashes/asserts means the rename/dispatch/VPQ path is solid
+   - [ ] VPQ stall counter: confirm VPQ is not frequently stalling rename (if it is, increase VPQ size)
+   - [ ] print_storage output matches expected byte count for given SVP config
 
 **Vincent** (start V1 now, needs `vpu.h` for V2+):
 1. V1: execute.cc misprediction detection (no dependencies)
