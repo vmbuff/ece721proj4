@@ -11,6 +11,10 @@ stats_t::stats_t(pipeline_t *_proc) {
    DECLARE_COUNTER(this, ld_vio_count, proc);
    DECLARE_COUNTER(this, exception_count, proc);
    DECLARE_COUNTER(this, split_count, proc);
+
+   // Project 4 VP debug: count cycles where rename2 stalled because VPQ was full.
+   // Diagnostic only, remove or keep as you see fit.
+   DECLARE_COUNTER(this, vpq_stall_count, proc);
 #if 0
   DECLARE_COUNTER(this, load_count                ,proc);
   DECLARE_COUNTER(this, store_count               ,proc);

@@ -1,194 +1,98 @@
-# Project 4 TODO: Work Split
+# Project 4 TODO
 
-**Chris**: SVP/VPQ module + rename.cc wiring
-**Vincent**: execute.cc misprediction detection + retire.cc training/stats + squash.cc repair + CLI/params
-
----
-
-## Status
-
-- [x] `vpu.h` interface defined (see `uarchsim/vpu.h`)
-- [x] `vpu.cc` full implementation (predict, train, repair, print_storage)
-- [x] Payload field additions (vp_eligible, vp_svp_hit, vp_confident, vpq_index)
-- [x] Rename wiring (VPQ stall, SVP prediction, oracle conf, VPQ tail checkpoint)
-- [x] Pipeline integration (VPU pointer, include, instantiation, vpq_tail_chkpt array)
-- [x] SVP parameters in parameters.h/cc
-- [x] retire.cc SVP training stub (Chris covering Vincent's V2 to unblock testing)
-- [x] squash.cc repair calls (Chris covering Vincent's V4 to unblock testing)
-- [x] CLI args `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>` (Chris covering V5)
-- [x] `--vp-perf` and `--vp-svp` mutual exclusion check
-- [ ] execute.cc misprediction detection (Vincent's V1)
-- [ ] retire.cc vpmeas stats collection (Vincent's V3a)
-- [ ] stats.cc vpmeas counter declarations (Vincent's V3b)
-- [ ] end-of-sim `VPU->print_storage()` call (Vincent's V6b)
+Current state of the `chris` branch.
 
 ---
 
-## Chris's Tasks
+## Done
 
-**Files**: `vpu.h`, `vpu.cc`, `rename.cc`, `payload.h`
-
-### C1: Implement `vpu.cc` (SVP + VPQ logic) -- DONE
-
-- [x] Define `vpu.h` with SVP entry, VPQ entry, and public interface
-- [x] Constructor: allocate SVP table (2^index_bits entries, all invalid) and VPQ (circular buffer, empty)
-- [x] `get_svp_index()`: `(pc >> 1) & ((1 << index_bits) - 1)`
-- [x] `get_svp_tag()`: `(pc >> (1 + index_bits)) & ((1 << tag_bits) - 1)`
-- [x] `tag_matches()`: return true if tag_bits == 0 or tags equal
-- [x] `count_inflight_instances()`: walk VPQ head to tail, count entries with matching svp_index
-- [x] `predict()`: lookup SVP, compute prediction on hit, increment instance, always allocate VPQ entry
-- [x] `train()`: tag match (update stride/conf/retired_value, decrement instance) or tag miss (replace entry, init instance via walk)
-- [x] `repair()`: walk VPQ backward, decrement instance for each discarded hit entry
-- [x] `vpq_free_entries()`: phase-bit arithmetic
-- [x] `get_vpq_tail()` and `get_vpq_head()`
-- [x] `print_storage()`: SVP bits per entry with valid bit, prints total bytes
-
-### C2: Payload field additions (`payload.h`) -- DONE
-
-- [x] `unsigned int vpq_index`
-- [x] `bool vp_eligible`
-- [x] `bool vp_svp_hit`
-- [x] `bool vp_confident`
-- [x] `vp_val` now set on any SVP hit (even unconfident)
-
-### C3: Wire VPU into `rename.cc` -- DONE
-
-- [x] VPQ stall condition (counts VP-eligible instrs, stalls if VPQ doesn't have enough free entries)
-- [x] SVP prediction path with `VPU->predict()`, stores all stat flags in payload
-- [x] Perfect VP path kept intact
-- [x] Oracle confidence mode: overrides SVP confidence using functional sim check
-- [x] `good_instruction` only in perfect and oracle conf paths, never in real conf path
-
-### C4: VPQ tail checkpointing (`rename.cc`) -- DONE
-
-- [x] At checkpoint creation, saves `VPU->get_vpq_tail()` into `vpq_tail_chkpt[branch_ID]`
-- [x] Stored in `pipeline_t` as `unsigned int vpq_tail_chkpt[64]` (parallel array, avoids touching renamer.h)
-- [x] For squash_complete, Vincent calls `VPU->repair(VPU->get_vpq_head())`
-
-### C5: Pipeline integration -- DONE
-
-- [x] `#include "vpu.h"` in `pipeline.h`
-- [x] `vpu_t *VPU` member in `pipeline_t`
-- [x] `vpq_tail_chkpt[64]` array in `pipeline_t`
-- [x] VPU instantiation in `pipeline.cc` constructor (SVP_ENABLED check)
-- [x] SVP parameters declared in `parameters.h/cc` with defaults
+- [x] `vpu.h` interface (SVP + VPQ class, predict/train/repair/print_storage)
+- [x] `vpu.cc` full implementation
+- [x] `payload.h` VP fields (vp_eligible, vp_svp_hit, vp_confident, vpq_index)
+- [x] `rename.cc` VPQ stall condition + SVP prediction path + oracle conf + VPQ tail checkpoint save
+- [x] `pipeline.h` VPU include, pointer, vpq_tail_chkpt[64] array
+- [x] `pipeline.cc` VPU instantiation gated on SVP_ENABLED
+- [x] `parameters.h/cc` SVP_ENABLED, SVP_ORACLE_CONF, VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX
+- [x] `main.cc` `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>` CLI + mutex check with --vp-perf
+- [x] `retire.cc` VPU->train() stub (Chris did V2 so testing could proceed)
+- [x] `squash.cc` VPU->repair() stubs in squash_complete and resolve misp (Chris did V4)
+- [x] Build passes at 100%
+- [x] Ran baseline + perfect VP mode without regressions on grendel
 
 ---
 
-## Vincent's Tasks
+## Still Needed (Vincent)
 
-**Files**: `execute.cc`, `retire.cc`, `squash.cc`, `main.cc`, `parameters.h`, `parameters.cc`, `stats.cc`, `pipeline.cc`
+### V1: execute.cc misprediction detection
 
-### V1: Misprediction detection (`execute.cc`) [no dependencies, start now]
+Three `REN->write()` call sites need a VP check. If `vp_pred` and computed value differs from `vp_val`: call `set_value_misprediction(AL_index)` and write correct value. If match: skip write (Slide 45 optimization). If not predicted: write normally.
 
-Three `REN->write()` call sites need a VP check. Same pattern at each:
-- If `vp_pred`: compare `C_value.dw` vs `vp_val`. If different, call `set_value_misprediction(AL_index)` and write correct value to PRF. If same, skip the write (Slide 45 optimization).
-- If not `vp_pred`: write PRF as normal.
+- [ ] ALU path (FIX_ME #14, line ~140)
+- [ ] Load hit path (FIX_ME #13, line ~82)
+- [ ] Load replay path (FIX_ME #18a in `load_replay()`, line ~264)
 
-Sites:
-- [ ] ALU path (line ~140, FIX_ME #14)
-- [ ] Load hit path (line ~82-83, FIX_ME #13)
-- [ ] Load replay path (line ~264-265, FIX_ME #18a in `load_replay()`)
+**Do NOT use `actual->a_rdst[0].value` to check correctness.** Spec deducts for this.
 
-**Do NOT use `actual->a_rdst[0].value`**. Only compare `C_value.dw` vs `vp_val`. Spec deducts for this.
+### V3: vpmeas statistics
 
-### V2: SVP training (`retire.cc`) -- DONE by Chris as a stub to unblock testing
+**stats.cc**: declare 7 counters via DECLARE_COUNTER:
+- [ ] vpmeas_ineligible
+- [ ] vpmeas_eligible
+- [ ] vpmeas_miss
+- [ ] vpmeas_conf_corr
+- [ ] vpmeas_conf_incorr
+- [ ] vpmeas_unconf_corr
+- [ ] vpmeas_unconf_incorr
 
-- [x] Training call added in retire.cc right after `REN->commit()` and before the load/store/branch commit actions
-- [x] Reads committed value from PRF via `REN->read(C_phys_reg)`, passes to `VPU->train()`
-- [ ] Vince, review the stub and confirm this is what you would have written. If not, replace it.
+**retire.cc**: at commit (before `num_insn++`), increment the appropriate counter based on payload fields `vp_eligible`, `vp_svp_hit`, `vp_confident`, and a correctness check (predicted `vp_val` vs actual committed value from PRF).
 
-### V3: VP statistics (`retire.cc` + `stats.cc`) [needs payload fields from Chris]
+- [ ] Implement the classification logic
+- [ ] Output format must match Gradescope validation runs exactly
 
-- [ ] Register 7 counters in `stats.cc`: `vpmeas_ineligible`, `vpmeas_eligible`, `vpmeas_miss`, `vpmeas_conf_corr`, `vpmeas_conf_incorr`, `vpmeas_unconf_corr`, `vpmeas_unconf_incorr`
-- [ ] At retirement (after training, before `num_insn++`):
-  - [ ] Not eligible: `inc_counter(vpmeas_ineligible)`
-  - [ ] Eligible + SVP miss: `inc_counter(vpmeas_eligible)` + `inc_counter(vpmeas_miss)`
-  - [ ] Eligible + SVP hit: `inc_counter(vpmeas_eligible)` + compare predicted vs committed value + check confidence flag, increment the right sub-counter
-- [ ] Output format must match Gradescope validation runs
+### V6b: print_storage call
 
-### V4: VPQ repair (`squash.cc`) -- DONE by Chris as a stub to unblock testing
+- [ ] At end of simulation (wherever stats are dumped), call `VPU->print_storage(stats_log)` if `VPU` is non-null
 
-- [x] `squash_complete()`: calls `VPU->repair(VPU->get_vpq_head())` after `REN->squash()`
-- [x] `resolve()` mispredicted branch path: calls `VPU->repair(vpq_tail_chkpt[branch_ID])` after the selective squash
-- [ ] Vince, review and replace if needed.
+### Optional: review Chris's stubs
 
-### V5: CLI + parameters -- DONE by Chris
-
-- [x] Parameters declared in `parameters.h/cc` with defaults
-- [x] `main.cc` parses `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>`
-- [x] Mutex check: `--vp-perf` and `--vp-svp` both error if specified together
-
-### V6: VPU instantiation (`pipeline.cc`) [needs `vpu.h`]
-
-- [ ] In `pipeline_t` constructor: if `SVP_ENABLED`, create `VPU = new vpu_t(...)`, else `VPU = nullptr`
-- [ ] At end of simulation (stats dump): call `VPU->print_storage(stats_log)` if VPU exists
-
----
-
-## Coordination Points
-
-| # | What | Chris | Vincent |
-|---|---|---|---|
-| 1 | `vpu.h` interface | Defines | Calls train/repair/print_storage |
-| 2 | `payload.h` new fields | Adds | Reads in retire.cc |
-| 3 | VPQ tail checkpoint storage | Saves in rename.cc | Reads in squash.cc |
-| 4 | Where to store VPQ tail snapshot | Both agree on location | |
-| 5 | `vpmeas_*` output format | | Vincent matches Gradescope |
-| 6 | `pipeline.h` VPU pointer | Adds include + member | Uses `VPU->` everywhere |
-
----
-
-## Implementation Order
-
-**Chris** -- ALL DONE, build passes:
-1. ~~Write `vpu.h`~~ Done
-2. ~~Add payload fields to `payload.h`~~ Done
-3. ~~Implement `vpu.cc`~~ Done
-4. ~~Wire into `rename.cc`~~ Done
-5. ~~VPQ tail checkpoint save~~ Done
-6. Test independently (before Vincent's code is merged):
-   - [x] Build succeeds with `vpu.cc` included (glob picks it up)
-   - [ ] Perfect VP mode still works (no regressions from payload/rename changes)
-   - [ ] SVP + oracle confidence: predictions happen, VPQ allocates/frees, no crashes. recovery_count = 0 since only correct predictions injected
-   - [ ] SVP + real confidence with misprediction detection stubbed (no `set_value_misprediction` calls yet): predictions inject, dependents schedule early, but mispredictions silently produce wrong values. IPC will be wrong but no crashes/asserts means the rename/dispatch/VPQ path is solid
-   - [ ] VPQ stall counter: confirm VPQ is not frequently stalling rename (if it is, increase VPQ size)
-   - [ ] print_storage output matches expected byte count for given SVP config
-
-**Vincent** (start V1 now, needs `vpu.h` for V2+):
-1. V1: execute.cc misprediction detection (no dependencies)
-2. V5: CLI + parameters (no dependencies)
-3. V3b: stats.cc counter declarations (no dependencies)
-4. Wait for Chris to share `payload.h` changes
-5. V6: pipeline.cc VPU instantiation
-6. V2: retire.cc training
-7. V3a: retire.cc statistics
-8. V4: squash.cc repair
+Chris wrote temporary stubs for V2 and V4 to unblock testing. They're functionally correct but Vince should review and keep/replace as he prefers:
+- [ ] retire.cc training call after `REN->commit()`
+- [ ] squash.cc repair calls in `squash_complete()` and `resolve()` branch misp path
 
 ---
 
 ## Build
-
-Executable is `721sim`. CMakeLists uses `file(GLOB *.cc)`, so `vpu.cc` is auto-picked up.
 
 ```bash
 cmake -B build && cmake --build build
 # build/uarchsim/721sim
 ```
 
+CMakeLists uses `file(GLOB *.cc)`, so any new `.cc` file (e.g., vpu.cc) is auto-picked up after re-running `cmake -B build`.
+
 ---
 
 ## Testing
 
-Run on `grendel.ece.ncsu.edu`. See `docs/PROJECT_OVERVIEW.md` for full run-directory workflow.
+Run on `grendel.ece.ncsu.edu`. Full workflow in `docs/PROJECT_OVERVIEW.md`.
 
 ```bash
-make cleanrun SIM_FLAGS_EXTRA='-e100000000 [pipeline flags] [vp flags]'
+make cleanrun SIM_FLAGS_EXTRA='-e10000000 [pipeline flags] [vp flags]'
 ```
 
-1. **Perfect VP** (already works): `--vp-perf=1 --vp-eligible=1,1,1`. recovery_count should be 0.
-2. **SVP + oracle conf**: `--vp-svp=256,1,10,0,7 --vp-eligible=1,1,1`. recovery_count = 0, vpmeas_conf_corr > 0.
-3. **SVP + real conf**: `--vp-svp=256,0,10,0,7 --vp-eligible=1,1,1`. recovery_count > 0 expected.
-4. **Gradescope**: IPC within 1%, vpmeas within 1%, storage cost exact.
+### Sanity tests (can run now)
+1. **Baseline** (no VP): no regressions
+2. **Perfect VP**: `--vp-perf=1 --vp-eligible=1,1,1`. recovery_count = 0, IPC > baseline
+3. **SVP + oracle conf**: `--vp-svp=256,1,10,0,7 --vp-eligible=1,1,1`. recovery_count = 0 (oracle rejects wrong predictions)
+4. **SVP + real conf**: `--vp-svp=256,0,10,0,7 --vp-eligible=1,1,1`. Will produce wrong values silently until Vincent adds V1 misp detection. Should not crash.
+
+### Gradescope validation (needs Vincent's V1 + V3 + V6b)
+Check Moodle for the actual validation runs. Known configs so far:
+```
+VAL-2: --vp-eligible=1,0,1 --vp-svp=300,1,10,10,31 --mdp=4,0 --perf=1,0,0,1 -t --cbpALG=0 --fq=64 --cp=32 --al=256 --lsq=128 --iq=64 --iqnp=4 --fw=8 --dw=8 --iw=16 --rw=8 -e10000000
+VAL-3: --vp-eligible=1,0,0 ... (same otherwise)
+VAL-4: --vp-eligible=0,0,1 ... (same otherwise)
+```
+All on checkpoint `473.astar_biglakes_ref.1844.0.50.gz`.
 
 Output in `stats.[timestamp]`. Check `ipc_rate` and `vpmeas_*`.

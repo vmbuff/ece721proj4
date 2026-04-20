@@ -157,8 +157,10 @@ void pipeline_t::rename2() {
          if (is_eligible(&PAY.buf[RENAME2[k].index]))
             bundle_vp_eligible++;
       }
-      if (VPU->vpq_free_entries() < bundle_vp_eligible)
+      if (VPU->vpq_free_entries() < bundle_vp_eligible) {
+         inc_counter(vpq_stall_count);  // diagnostic
          return;
+      }
    }
 
    //
