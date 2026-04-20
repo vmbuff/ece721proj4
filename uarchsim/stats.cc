@@ -12,9 +12,11 @@ stats_t::stats_t(pipeline_t *_proc) {
    DECLARE_COUNTER(this, exception_count, proc);
    DECLARE_COUNTER(this, split_count, proc);
 
-   // Project 4 VP debug: count cycles where rename2 stalled because VPQ was full.
-   // Diagnostic only, remove or keep as you see fit.
+   // Project 4 VP debug counters. Diagnostic only, remove later.
    DECLARE_COUNTER(this, vpq_stall_count, proc);
+   DECLARE_COUNTER(this, vp_svp_hit_count, proc);   // SVP had a valid tag-matching entry
+   DECLARE_COUNTER(this, vp_svp_miss_count, proc);  // SVP miss (invalid or tag mismatch)
+   DECLARE_COUNTER(this, vp_inject_count, proc);    // prediction was confident and injected
 #if 0
   DECLARE_COUNTER(this, load_count                ,proc);
   DECLARE_COUNTER(this, store_count               ,proc);
