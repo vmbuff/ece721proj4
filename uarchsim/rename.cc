@@ -157,10 +157,8 @@ void pipeline_t::rename2() {
          if (is_eligible(&PAY.buf[RENAME2[k].index]))
             bundle_vp_eligible++;
       }
-      if (VPU->vpq_free_entries() < bundle_vp_eligible) {
-         inc_counter(vpq_stall_count);  // diagnostic
+      if (VPU->vpq_free_entries() < bundle_vp_eligible)
          return;
-      }
    }
 
    //
@@ -274,9 +272,6 @@ void pipeline_t::rename2() {
             PAY.buf[index].vpq_index  = vpq_idx;
             PAY.buf[index].vp_svp_hit = hit;
 
-            if (hit) inc_counter(vp_svp_hit_count);
-            else     inc_counter(vp_svp_miss_count);
-
             if (hit) {
                // Always store predicted value (even unconfident) so retire can
                // check correctness for all vpmeas stat categories.
@@ -303,7 +298,6 @@ void pipeline_t::rename2() {
                if (confident) {
                   PAY.buf[index].vp_pred = true;
                   // vp_val already set above
-                  inc_counter(vp_inject_count);
                }
             }
          }
