@@ -142,13 +142,15 @@ bool ENABLE_TRACE_CACHE = false;
 
 // Project 4 - Value Prediction
 bool PERFECT_VALUE_PRED = false;    // If true, use perfect value prediction mode
-bool predINTALU = false;            // If true, instr. is INTALU type and eligible to be value predicted
-bool predFPALU = false;             // If true, instr. is FPALU type and eligible to be value predicted
-bool predLOAD = false;              // If true, instr. is a normal LOAD and eligible to be value predicted
+// TEMP: hardcoded for SVP testing before Vince adds --vp-svp CLI parsing (V5). Revert before committing.
+bool predINTALU = true;             // enable integer ALU eligibility
+bool predFPALU = false;
+bool predLOAD = true;               // enable load eligibility
 
 // SVP configuration (defaults, overridden by --vp-svp CLI, Vince Task V5)
-bool SVP_ENABLED = false;
-bool SVP_ORACLE_CONF = false;
+// TEMP: SVP_ENABLED=true, SVP_ORACLE_CONF=true to test SVP path without mispredictions. Revert before committing.
+bool SVP_ENABLED = true;
+bool SVP_ORACLE_CONF = true;
 unsigned int VPQ_SIZE = 256;
 unsigned int SVP_INDEX_BITS = 10;
 unsigned int SVP_TAG_BITS = 0;
