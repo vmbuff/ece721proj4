@@ -115,14 +115,14 @@ bool vpu_t::predict(uint64_t pc,
    bool hit = (svp[idx].valid && tag_matches(idx, pc));
 
    if (hit) {
-      // prediction = retired_value + instance * stride
+      // Increment BEFORE computing prediction so this in-flight instance
+      // predicts the next value (retired_value + stride), not the last-committed
+      // value (retired_value + 0).
+      svp[idx].instance++;
+
       out_predicted_val = svp[idx].retired_value +
                           (uint64_t)((int64_t)svp[idx].instance * svp[idx].stride);
       out_confident = (svp[idx].conf >= svp_conf_max);
-
-      // Speculatively increment instance so the next rename of this PC
-      // predicts the next stride step. Undone at retire (train) or squash (repair).
-      svp[idx].instance++;
    }
 
    // Always allocate a VPQ entry, even on miss.
