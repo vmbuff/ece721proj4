@@ -28,27 +28,27 @@ Expected: completes without crashes/asserts, recovery_count = 0, IPC improves ov
 
 ### 2b. SVP + oracle confidence
 
-First real test of the SVP path. Oracle confidence means only correct predictions are injected, so there should be no mispredictions.
+First real test of the SVP path. Oracle confidence means only correct predictions are injected, so there should be no mispredictions. Chris added stub train() and repair() calls so the VPQ actually drains, making this test viable before Vince's full V2/V4.
 
 ```
 --vp-svp=256,1,10,0,7 --vp-eligible=1,1,1
 ```
 
-Expected: completes without crashes/asserts, recovery_count = 0. If it crashes, the bug is likely in predict() or the VPQ stall logic. If recovery_count > 0, the oracle confidence override in rename.cc is not working correctly.
+Expected: completes without crashes/asserts, recovery_count = 0. If it crashes, the bug is likely in predict(), train(), or repair(). If recovery_count > 0, the oracle confidence override in rename.cc is not working correctly.
 
-Note: stats won't print vpmeas counters yet (Vincent hasn't added them), but no crashes means the VPU predict/allocate path and the dispatch injection are working.
+Note: vpmeas counters aren't printed yet (Vincent's V3). No crashes means the VPU + train + repair loop is closed and predict/allocate/inject works.
 
 ### 2c. SVP + real confidence (no misprediction detection yet)
 
-Test that real predictions inject without crashing. Since Vincent hasn't added misprediction detection in execute.cc, wrong predictions will silently produce incorrect values. The IPC will be wrong, but the pipeline should not crash or assert.
+Test that real predictions inject without crashing. Since Vincent hasn't added misprediction detection in execute.cc, wrong predictions will silently produce incorrect values. The IPC will be wrong (checker will flag mismatches), but the pipeline should not crash or assert.
 
 ```
 --vp-svp=256,0,10,0,7 --vp-eligible=1,1,1
 ```
 
-Expected: should complete without crashes. If assertions fire in issue_queue.cc (lines 112/121/130), there's a double-wakeup bug, check the `!vp_pred` guards in execute.cc and register_read.cc (those were Vince's earlier changes and should be fine, but worth verifying).
+Expected: runs without crashes. The checker WILL fire for wrong committed values (that's expected). If assertions fire in issue_queue.cc (lines 112/121/130), there's a double-wakeup bug, check the `!vp_pred` guards in execute.cc (those were Vince's earlier changes and should be fine).
 
-If the checker fires (wrong committed values), that's expected since misprediction detection isn't in yet. The key thing is no asserts/segfaults.
+If the checker fires, that's expected since misprediction detection isn't in yet. The key thing is no asserts/segfaults from the VPU path.
 
 ### 2d. print_storage sanity check
 
@@ -65,16 +65,13 @@ Confirm the `stats.*` output file shows `Total SVP storage: 18048 bytes`. If the
 
 ## 3. Tell Vincent what he needs to know
 
-Send him a message covering these points:
-
-- Your code is on branch `chris`, PR #3 has the TODO. He should pull `chris` or wait for merge.
-- His squash.cc repair calls:
-  - `squash_complete()`: call `VPU->repair(VPU->get_vpq_head())` after `REN->squash()`
-  - `resolve()` branch misp: call `VPU->repair(vpq_tail_chkpt[branch_ID])` after the selective squash
-- His retire.cc training call: `VPU->train(PAY.buf[PAY.head].vpq_index, committed_val)` after `REN->commit()`, only if `PAY.buf[PAY.head].vp_eligible`
-- His stats use these payload fields: `vp_eligible`, `vp_svp_hit`, `vp_confident`, `vp_val`
-- SVP parameters are already declared in `parameters.h/cc` with defaults. His CLI parsing just needs to set them.
-- `--vp-perf` and `--vp-svp` must be mutually exclusive.
+- Branch `chris` is where all the work is. He should pull it.
+- Chris stubbed in V2 (training), V4 (repair), and V5 (CLI) so testing can proceed without waiting. He should review the stubs in `retire.cc`, `squash.cc`, and `main.cc` and replace them if he would have written them differently.
+- Remaining for Vincent:
+  - **V1**: execute.cc misprediction detection (3 `REN->write()` sites)
+  - **V3a**: retire.cc vpmeas counter increments (uses payload fields `vp_eligible`, `vp_svp_hit`, `vp_confident`, `vp_val`)
+  - **V3b**: stats.cc vpmeas counter declarations
+  - **V6b**: end-of-sim `VPU->print_storage(stats_log)` call
 
 ## 4. After Vincent's code is merged
 

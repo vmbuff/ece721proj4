@@ -83,6 +83,15 @@ void pipeline_t::retire(size_t &instret) {
          REN->commit();
          // FIX_ME #17b END
 
+         // Project 4 - VP: Train SVP via VPQ at retirement (V2 stub, Vince to finalize).
+         // Must happen before any squash_complete() below, which calls VPU->repair().
+         if (VPU && PAY.buf[PAY.head].vp_eligible) {
+            uint64_t committed_val = 0;
+            if (PAY.buf[PAY.head].C_valid)
+               committed_val = REN->read(PAY.buf[PAY.head].C_phys_reg);
+            VPU->train(PAY.buf[PAY.head].vpq_index, committed_val);
+         }
+
          // If the committed instruction is a load or store, signal the LSU to commit its oldest load or store, respectively.
          if (load || store) {
             assert(load != store);                                              // Make sure that the same instruction does not have both flags set.

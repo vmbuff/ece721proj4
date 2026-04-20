@@ -128,17 +128,24 @@ on a branch misprediction.
 Builds clean at 100%. `vpu.cc` is auto-picked up by the glob in CMakeLists. No manual
 CMakeLists edit needed.
 
+## Added Stubs for Vincent's V2, V4, V5 (so Chris can test)
+
+These were added to unblock testing. Vince should review and replace if he has
+something different in mind.
+
+- **V2 (retire.cc training)**: added `VPU->train()` call after `REN->commit()` in the
+  main commit path. Reads committed value from PRF.
+- **V4 (squash.cc repair)**:
+  - `squash_complete()`: `VPU->repair(VPU->get_vpq_head())` (empties VPQ)
+  - `resolve()` misp path: `VPU->repair(vpq_tail_chkpt[branch_ID])`
+- **V5 (CLI parsing)**: added `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>`
+  parsing in main.cc. Mutex with `--vp-perf`.
+
 ## What Still Needs Vincent
 
 - V1: execute.cc misprediction detection (3 REN->write sites)
-- V2: retire.cc SVP training call (`VPU->train()`)
-- V3: retire.cc + stats.cc vpmeas counters
-- V4: squash.cc `VPU->repair()` calls (using `vpq_tail_chkpt[]` for branch misp,
-  `VPU->vpq_head` for squash_complete... note: vpq_head is private, may need a getter
-  or just pass `VPU->get_vpq_tail()` before the squash since after full squash the VPQ
-  should be empty and head == tail)
-- V5: main.cc CLI parsing for `--vp-svp`
-- V6: end-of-sim `VPU->print_storage()` call
+- V3: retire.cc vpmeas stats counter increments + stats.cc counter declarations
+- V6b: end-of-sim `VPU->print_storage(stats_log)` call
 
 ## squash_complete repair note
 

@@ -12,12 +12,15 @@
 - [x] Payload field additions (vp_eligible, vp_svp_hit, vp_confident, vpq_index)
 - [x] Rename wiring (VPQ stall, SVP prediction, oracle conf, VPQ tail checkpoint)
 - [x] Pipeline integration (VPU pointer, include, instantiation, vpq_tail_chkpt array)
-- [x] SVP parameters in parameters.h/cc (defaults, ready for CLI parsing)
-- [ ] execute.cc misprediction detection (Vincent)
-- [ ] retire.cc training + stats (Vincent)
-- [ ] squash.cc repair (Vincent)
-- [ ] CLI args `--vp-svp` in main.cc (Vincent)
-- [ ] stats.cc counter declarations (Vincent)
+- [x] SVP parameters in parameters.h/cc
+- [x] retire.cc SVP training stub (Chris covering Vincent's V2 to unblock testing)
+- [x] squash.cc repair calls (Chris covering Vincent's V4 to unblock testing)
+- [x] CLI args `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>` (Chris covering V5)
+- [x] `--vp-perf` and `--vp-svp` mutual exclusion check
+- [ ] execute.cc misprediction detection (Vincent's V1)
+- [ ] retire.cc vpmeas stats collection (Vincent's V3a)
+- [ ] stats.cc vpmeas counter declarations (Vincent's V3b)
+- [ ] end-of-sim `VPU->print_storage()` call (Vincent's V6b)
 
 ---
 
@@ -89,10 +92,11 @@ Sites:
 
 **Do NOT use `actual->a_rdst[0].value`**. Only compare `C_value.dw` vs `vp_val`. Spec deducts for this.
 
-### V2: SVP training (`retire.cc`) [needs `vpu.h`]
+### V2: SVP training (`retire.cc`) -- DONE by Chris as a stub to unblock testing
 
-- [ ] After `REN->commit()` and before `checker()`: if instr was VP-eligible, read committed value from PRF, call `VPU->train(vpq_index, committed_val)`
-- [ ] Using PAY to decide *when* to call train is OK per spec. Actual training data comes from VPQ inside `train()`.
+- [x] Training call added in retire.cc right after `REN->commit()` and before the load/store/branch commit actions
+- [x] Reads committed value from PRF via `REN->read(C_phys_reg)`, passes to `VPU->train()`
+- [ ] Vince, review the stub and confirm this is what you would have written. If not, replace it.
 
 ### V3: VP statistics (`retire.cc` + `stats.cc`) [needs payload fields from Chris]
 
@@ -103,16 +107,17 @@ Sites:
   - [ ] Eligible + SVP hit: `inc_counter(vpmeas_eligible)` + compare predicted vs committed value + check confidence flag, increment the right sub-counter
 - [ ] Output format must match Gradescope validation runs
 
-### V4: VPQ repair (`squash.cc`) [needs `vpu.h` + checkpoint agreement with Chris]
+### V4: VPQ repair (`squash.cc`) -- DONE by Chris as a stub to unblock testing
 
-- [ ] In `squash_complete()` (after `REN->squash()`): call `VPU->repair(vpq_head)` to discard all in-flight VPQ entries
-- [ ] In `resolve()` mispredicted branch path: call `VPU->repair(saved_vpq_tail)` using the tail saved at checkpoint time by Chris (Task C4)
+- [x] `squash_complete()`: calls `VPU->repair(VPU->get_vpq_head())` after `REN->squash()`
+- [x] `resolve()` mispredicted branch path: calls `VPU->repair(vpq_tail_chkpt[branch_ID])` after the selective squash
+- [ ] Vince, review and replace if needed.
 
-### V5: CLI + parameters [no dependencies]
+### V5: CLI + parameters -- DONE by Chris
 
-- [ ] `parameters.h/cc`: add `SVP_ENABLED`, `SVP_ORACLE_CONF`, `VPQ_SIZE`, `SVP_INDEX_BITS`, `SVP_TAG_BITS`, `SVP_CONF_MAX` with defaults
-- [ ] `main.cc`: parse `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>`, set `SVP_ENABLED = true`
-- [ ] Ensure `--vp-perf` and `--vp-svp` are mutually exclusive
+- [x] Parameters declared in `parameters.h/cc` with defaults
+- [x] `main.cc` parses `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>`
+- [x] Mutex check: `--vp-perf` and `--vp-svp` both error if specified together
 
 ### V6: VPU instantiation (`pipeline.cc`) [needs `vpu.h`]
 
