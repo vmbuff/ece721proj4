@@ -18,6 +18,8 @@ Current state of the `chris` branch.
 - [x] `squash.cc` VPU->repair() stubs in squash_complete and resolve misp (Chris did V4)
 - [x] Build passes at 100%
 - [x] Ran baseline + perfect VP mode without regressions on grendel
+- [x] **VAL-2 validation: IPC 3.72 and cycle_count 2687129 exactly match reference**
+- [x] Fixed instance++ ordering bug in predict() (increment before computing prediction)
 
 ---
 
@@ -80,10 +82,10 @@ Run on `grendel.ece.ncsu.edu`. Full workflow in `docs/PROJECT_OVERVIEW.md`.
 make cleanrun SIM_FLAGS_EXTRA='-e10000000 [pipeline flags] [vp flags]'
 ```
 
-### Sanity tests (can run now)
-1. **Baseline** (no VP): no regressions
-2. **Perfect VP**: `--vp-perf=1 --vp-eligible=1,1,1`. recovery_count = 0, IPC > baseline
-3. **SVP + oracle conf**: `--vp-svp=256,1,10,0,7 --vp-eligible=1,1,1`. recovery_count = 0 (oracle rejects wrong predictions)
+### Sanity tests
+1. **Baseline** (no VP): no regressions -- passes
+2. **Perfect VP**: `--vp-perf=1 --vp-eligible=1,1,1`. recovery_count = 0, IPC > baseline -- passes
+3. **SVP + oracle conf**: VAL-2 config -- passes, IPC exactly matches reference (3.72)
 4. **SVP + real conf**: `--vp-svp=256,0,10,0,7 --vp-eligible=1,1,1`. Will produce wrong values silently until Vincent adds V1 misp detection. Should not crash.
 
 ### Gradescope validation (needs Vincent's V1 + V3 + V6b)
