@@ -283,15 +283,17 @@ void pipeline_t::rename2() {
                PAY.buf[index].vp_val = predicted_val;
 
                if (SVP_ORACLE_CONF) {
-                  // Oracle confidence: override SVP's confidence with whether the
-                  // prediction is actually correct (checked against functional sim).
-                  // good_instruction is allowed here (oracle mode only).
-                  confident = false;
+                  // Oracle confidence: for on-path instrs, check prediction vs functional sim
+                  // value and override SVP conf with that result. For off-path instrs, we have
+                  // no ground truth to check, so fall back to SVP's own confidence counter.
+                  // (good_instruction is allowed here, oracle mode only.)
                   if (PAY.buf[index].good_instruction) {
+                     confident = false;
                      db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);
                      if (actual && actual->a_rdst[0].valid)
                         confident = (predicted_val == actual->a_rdst[0].value);
                   }
+                  // else: leave `confident` as the SVP's own result (conf >= conf_max)
                }
                // IMPORTANT: in real confidence mode (not oracle), we do NOT touch
                // good_instruction at all. Even wrong-path instrs get predicted.
