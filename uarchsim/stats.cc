@@ -11,6 +11,17 @@ stats_t::stats_t(pipeline_t *_proc) {
    DECLARE_COUNTER(this, ld_vio_count, proc);
    DECLARE_COUNTER(this, exception_count, proc);
    DECLARE_COUNTER(this, split_count, proc);
+
+   // Project 4 - Value Prediction
+   // Declare counters for value prediction statistics
+   DECLARE_COUNTER(this, vpmeas_ineligible        ,proc);
+   DECLARE_COUNTER(this, vpmeas_eligible          ,proc);
+   DECLARE_COUNTER(this, vpmeas_miss              ,proc);
+   DECLARE_COUNTER(this, vpmeas_conf_corr         ,proc);
+   DECLARE_COUNTER(this, vpmeas_conf_incorr       ,proc);
+   DECLARE_COUNTER(this, vpmeas_unconf_corr       ,proc);
+   DECLARE_COUNTER(this, vpmeas_unconf_incorr     ,proc);
+   
 #if 0
   DECLARE_COUNTER(this, load_count                ,proc);
   DECLARE_COUNTER(this, store_count               ,proc);

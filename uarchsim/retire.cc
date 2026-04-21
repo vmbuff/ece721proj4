@@ -98,6 +98,33 @@ void pipeline_t::retire(size_t &instret) {
             VPU->train(PAY.buf[PAY.head].vpq_index, committed_val);
          }
 
+         // Update value prediction statistics at retirement
+         // Check if instruction was eligible for value prediction
+         if (!PAY.buf[PAY.head].vp_eligible) {
+            inc_counter(vpmeas_ineligible);              // Instruction NOT eligible for value prediction
+         } else {
+            inc_counter(vpmeas_eligible);                // Instruction eligible for value prediction
+
+            // Check if instruction had value prediction available
+            if (!PAY.buf[PAY.head].vp_svp_hit && !PERFECT_VALUE_PRED) {
+               inc_counter(vpmeas_miss);                 // Instruction had NO value prediction available (SVP miss)
+
+            // Check if instruction was value predicted with confidence
+            } else if (PAY.buf[PAY.head].vp_confident) {
+               if (PAY.buf[PAY.head].C_value.dw == PAY.buf[PAY.head].vp_val)
+                  inc_counter(vpmeas_conf_corr);         // Instruction value predicted correctly with confidence         
+               else
+                  inc_counter(vpmeas_conf_incorr);       // Instruction value predicted incorrectly with confidence
+            
+            // Check if instruction was value predicted without confidence
+            } else {
+               if (PAY.buf[PAY.head].C_value.dw == PAY.buf[PAY.head].vp_val)
+                  inc_counter(vpmeas_unconf_corr);       // Instruction value predicted correctly without confidence
+               else
+                  inc_counter(vpmeas_unconf_incorr);     // Instruction value predicted incorrectly without confidence
+            }
+         }
+
          // If the committed instruction is a load or store, signal the LSU to commit its oldest load or store, respectively.
          if (load || store) {
             assert(load != store);                                              // Make sure that the same instruction does not have both flags set.
