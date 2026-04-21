@@ -424,6 +424,31 @@ pipeline_t::pipeline_t(
    fprintf(stats_log, "IBP_BHR_LENGTH = %d\n", IBP_BHR_LENGTH);
    fprintf(stats_log, "ENABLE_TRACE_CACHE = %d\n", (ENABLE_TRACE_CACHE ? 1 : 0));
 
+   // Project 4 - Value Prediction
+   // Print value prediction configuration and cost accounting information
+   fprintf(stats_log, "\n=== VALUE PREDICTOR =============================================================\n\n");
+
+   fprintf(stats_log, "VP-eligible configuration:\n");
+   fprintf(stats_log, "   predINTALU = %d\n",   (predINTALU ? 1 : 0));
+   fprintf(stats_log, "   predFPALU  = %d\n",   (predFPALU  ? 1 : 0));
+   fprintf(stats_log, "   predLOAD   = %d\n\n", (predLOAD   ? 1 : 0));
+
+   if(PERFECT_VALUE_PRED) {
+      fprintf(stats_log, "VALUE PREDICTOR = perfect\n");
+
+      fprintf(stats_log, "\nCOST ACCOUNTING\n");
+      fprintf(stats_log, "  Impossible.\n");
+   } else if (VPU) {
+      fprintf(stats_log, "VALUE PREDICTOR = stride (Project 4 spec. implementation)\n");
+      fprintf(stats_log, "   VPQsize         = %u\n", VPQ_SIZE);
+      fprintf(stats_log, "   oracleconf      = %d (%s)\n", (SVP_ORACLE_CONF ? 1 : 0), (SVP_ORACLE_CONF ? "(oracle confidence)" : "(real confidence)"));
+      fprintf(stats_log, "   # index bits    = %u\n", SVP_INDEX_BITS);
+      fprintf(stats_log, "   # tag bits      = %u\n", SVP_TAG_BITS);
+      fprintf(stats_log, "   confmax         = %u\n", SVP_CONF_MAX);
+      fprintf(stats_log, "\nCOST ACCOUNTING\n");
+      VPU->print_storage(stats_log);
+   }
+
    fprintf(stats_log, "\n=== INTERNAL SIMULATOR STRUCTURES ===============================================\n\n");
 
    fprintf(stats_log, "PAYLOAD_BUFFER_SIZE = %d\n", PAY.get_size());
@@ -469,6 +494,18 @@ pipeline_t::~pipeline_t() {
 
    FetchUnit->output(stats->get_counter("commit_count"), stats->get_counter("cycle_count"), stats_log);
    LSU.dump_stats(extra_wait_time_for_inum, stats_log);
+
+   // Project 4 - Value Prediction
+   // Print value prediction statistics 
+   uint64_t total = counter(commit_count);
+   fprintf(stats_log, "VPU MEASUREMENTS-----------------------------------\n");
+   fprintf(stats_log, "vpmeas_ineligible         : %10lu (%6.2f%%) // Not eligible for value prediction.\n",        counter(vpmeas_ineligible),    100.0 * counter(vpmeas_ineligible)    / total);
+   fprintf(stats_log, "vpmeas_eligible           : %10lu (%6.2f%%) // Eligible for value prediction.\n",            counter(vpmeas_eligible),      100.0 * counter(vpmeas_eligible)      / total);
+   fprintf(stats_log, "   vpmeas_miss            : %10lu (%6.2f%%) // VPU was unable to generate a value prediction (e.g., SVP miss).\n",                counter(vpmeas_miss),          100.0 * counter(vpmeas_miss)          / total);
+   fprintf(stats_log, "   vpmeas_conf_corr       : %10lu (%6.2f%%) // VPU generated a confident and correct value prediction.\n",                        counter(vpmeas_conf_corr),     100.0 * counter(vpmeas_conf_corr)     / total);
+   fprintf(stats_log, "   vpmeas_conf_incorr     : %10lu (%6.2f%%) // VPU generated a confident and incorrect value prediction. (MISPREDICTION)\n",      counter(vpmeas_conf_incorr),   100.0 * counter(vpmeas_conf_incorr)   / total);
+   fprintf(stats_log, "   vpmeas_unconf_corr     : %10lu (%6.2f%%) // VPU generated an unconfident and correct value prediction. (LOST OPPORTUNITY)\n",  counter(vpmeas_unconf_corr),   100.0 * counter(vpmeas_unconf_corr)   / total);
+   fprintf(stats_log, "   vpmeas_unconf_incorr   : %10lu (%6.2f%%) // VPU generated an unconfident and incorrect value prediction.\n",                   counter(vpmeas_unconf_incorr), 100.0 * counter(vpmeas_unconf_incorr) / total);
 
 #ifdef RISCV_MICRO_DEBUG
    fclose(this->fetch_log);

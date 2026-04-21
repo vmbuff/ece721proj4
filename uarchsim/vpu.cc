@@ -229,18 +229,21 @@ void vpu_t::repair(unsigned int restored_vpq_tail) {
 //
 
 void vpu_t::print_storage(FILE *out) {
-   // instance needs to hold values 0..vpq_size
    unsigned int instance_bits = (vpq_size > 0) ? (unsigned int)ceil(log2((double)(vpq_size + 1))) : 1;
-   // conf needs to hold values 0..conf_max
    unsigned int conf_bits = (svp_conf_max > 0) ? (unsigned int)ceil(log2((double)(svp_conf_max + 1))) : 1;
-   // 1 valid bit per entry
-   unsigned int bits_per_entry = svp_tag_bits + 64 + 64 + instance_bits + conf_bits + 1;
+   unsigned int bits_per_entry = svp_tag_bits + conf_bits + 64 + 64 + instance_bits;
    unsigned int total_bits = svp_num_entries * bits_per_entry;
-   unsigned int total_bytes = (total_bits + 7) / 8;
+   double total_bytes = total_bits / 8.0;
+   double total_kb = total_bytes / 1024.0;
 
-   fprintf(out, "VPU Storage:\n");
-   fprintf(out, "  SVP entries:       %u\n", svp_num_entries);
-   fprintf(out, "  Bits per entry:    %u (tag:%u stride:64 retired_value:64 instance:%u conf:%u valid:1)\n",
-           bits_per_entry, svp_tag_bits, instance_bits, conf_bits);
-   fprintf(out, "  Total SVP storage: %u bytes\n", total_bytes);
+   fprintf(out, "   One SVP entry:\n");
+   fprintf(out, "      tag           : %3u bits  // num_tag_bits\n", svp_tag_bits);
+   fprintf(out, "      conf          : %3u bits  // formula: (uint64_t)ceil(log2((double)(confmax+1)))\n", conf_bits);
+   fprintf(out, "      retired_value :  64 bits  // RISCV64 integer size.\n");
+   fprintf(out, "      stride        :  64 bits  // RISCV64 integer size. Competition opportunity: truncate stride to far fewer bits based on stride distribution of stride-predictable instructions.\n");
+   fprintf(out, "      instance ctr  : %3u bits  // formula: (uint64_t)ceil(log2((double)VPQsize))\n", instance_bits);
+   fprintf(out, "      -------------------------\n");
+   fprintf(out, "      bits/SVP entry: %u bits\n", bits_per_entry);
+   fprintf(out, "   Total storage cost (bits) = (%u SVP entries x %u bits/SVP entry) = %u bits\n", svp_num_entries, bits_per_entry, total_bits);
+   fprintf(out, "   Total storage cost (bytes) = %.2f B (%.2f KB)\n", total_bytes, total_kb);
 }
