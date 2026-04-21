@@ -83,12 +83,18 @@ void pipeline_t::retire(size_t &instret) {
          REN->commit();
          // FIX_ME #17b END
 
-         // Project 4 - VP: Train SVP via VPQ at retirement (V2 stub, Vince to finalize).
-         // Must happen before any squash_complete() below, which calls VPU->repair().
+         // Project 4 - Value Prediction
+         // Train the SVP using the VPQ at retirement
+         // Check if VPU exists and instruction was eligible for value prediction 
          if (VPU && PAY.buf[PAY.head].vp_eligible) {
+            // Temporary variable to hold committed value
             uint64_t committed_val = 0;
+
+            // If instruction has a valid destination register, hold committed value for training
             if (PAY.buf[PAY.head].C_valid)
                committed_val = REN->read(PAY.buf[PAY.head].C_phys_reg);
+
+            // Train the VPU using this committed value
             VPU->train(PAY.buf[PAY.head].vpq_index, committed_val);
          }
 

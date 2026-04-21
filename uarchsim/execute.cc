@@ -82,8 +82,9 @@ void pipeline_t::execute(unsigned int lane_number) {
                REN->set_ready(PAY.buf[index].C_phys_reg);
                REN->write(PAY.buf[index].C_phys_reg, PAY.buf[index].C_value.dw);
 
-               // Check for value misprediction
+               // Check for value misprediction on value-predicted instructions
                if(PAY.buf[index].vp_pred) {
+                  // If actual value differs from predicted value, post a value misprediction to the Active list
                   if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                      REN->set_value_misprediction(PAY.buf[index].AL_index);
                   }
@@ -148,8 +149,9 @@ void pipeline_t::execute(unsigned int lane_number) {
             REN->write(PAY.buf[index].C_phys_reg, PAY.buf[index].C_value.dw);
 
             // Project 4 - Value Prediction
-            // Check for value misprediction
+            // Check for value misprediction on value-predicted instructions
             if(PAY.buf[index].vp_pred) {
+               // If actual value differs from predicted value, post a value misprediction to the Active list
                if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                   REN->set_value_misprediction(PAY.buf[index].AL_index);
                }
@@ -280,8 +282,9 @@ void pipeline_t::load_replay() {
          REN->write(PAY.buf[index].C_phys_reg, PAY.buf[index].C_value.dw);
 
          // Project 4 - Value Prediction
-         // Check for value misprediction
+         // Check for value misprediction on value-predicted instructions
          if(PAY.buf[index].vp_pred) {
+            // If actual value differs from predicted value, post a value misprediction to the Active list
             if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                REN->set_value_misprediction(PAY.buf[index].AL_index);
             }
