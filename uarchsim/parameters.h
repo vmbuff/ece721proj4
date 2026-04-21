@@ -112,6 +112,14 @@ extern bool predINTALU;             // If true, instr. is INTALU type and eligib
 extern bool predFPALU;              // If true, instr. is FPALU type and eligible to be value predicted
 extern bool predLOAD;               // If true, instr. is a normal LOAD and eligible to be value predicted
 
+// SVP configuration (Vince: move CLI parsing to main.cc, Task V5)
+extern bool SVP_ENABLED;            // True when --vp-svp is specified
+extern bool SVP_ORACLE_CONF;        // True = oracle confidence, False = real confidence
+extern unsigned int VPQ_SIZE;
+extern unsigned int SVP_INDEX_BITS;
+extern unsigned int SVP_TAG_BITS;
+extern unsigned int SVP_CONF_MAX;
+
 // Benchmark control.
 extern bool logging_on;
 extern int64_t logging_on_at;

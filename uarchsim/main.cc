@@ -388,10 +388,37 @@ static void set_vp_perf(const char *config) {
    if (sscanf(config, "%lu", &enable) != 1) {
       fprintf(stderr, "Incorrect usage: --vp-perf=<enable>, where <enable> is 0 or 1 to disable or enable perfect value prediction, respectively.\n");
       exit(-1);
-   // If correct usage, set PERFECT_VALUE_PRED flag based on the parsed value of enable
-   } else {
-      PERFECT_VALUE_PRED = (enable ? true : false);
    }
+   if (enable && SVP_ENABLED) {
+      fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+   PERFECT_VALUE_PRED = (enable ? true : false);
+}
+
+// Project 4 - Value Prediction
+// --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>
+// Configures the Stride Value Predictor. Mutually exclusive with --vp-perf.
+static void set_vp_svp(const char *config) {
+   uint64_t vpqsize, oracleconf, indexbits, tagbits, confmax;
+
+   if (sscanf(config, "%lu,%lu,%lu,%lu,%lu",
+              &vpqsize, &oracleconf, &indexbits, &tagbits, &confmax) != 5) {
+      fprintf(stderr, "Incorrect usage: --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>\n");
+      exit(-1);
+   }
+
+   if (PERFECT_VALUE_PRED) {
+      fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+
+   SVP_ENABLED     = true;
+   VPQ_SIZE        = (unsigned int)vpqsize;
+   SVP_ORACLE_CONF = (oracleconf ? true : false);
+   SVP_INDEX_BITS  = (unsigned int)indexbits;
+   SVP_TAG_BITS    = (unsigned int)tagbits;
+   SVP_CONF_MAX    = (unsigned int)confmax;
 }
 
 // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction
@@ -464,6 +491,8 @@ int main(int argc, char **argv) {
    // Add command line options for value prediction configuration
    // --vp-perf to specify whether perfect value prediction is enabled or not
    parser.option(0, "vp-perf", 1, [&](const char *s) { set_vp_perf(s); });
+   // --vp-svp to configure the Stride Value Predictor (VPQsize,oracleconf,indexbits,tagbits,confmax)
+   parser.option(0, "vp-svp", 1, [&](const char *s) { set_vp_svp(s); });
    // --vp-eligible to specify which instruction types are eligible for value prediction (integer ALU, floating-point ALU, and/or load instructions)
    parser.option(0, "vp-eligible", 1, [&](const char *s) { set_vp_eligible(s); });
 
