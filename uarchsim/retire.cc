@@ -229,14 +229,10 @@ void pipeline_t::retire(size_t &instret) {
             MDP->squash();
          }
 
-         // Project 4 - VP: the violated load is at VPQ head and will never
-         // retire/train, so its speculative svp[].instance++ from predict()
-         // must be undone here. squash_complete()->repair() stops at head and
-         // cannot decrement the head entry itself.
-         if (VPU && PAY.buf[PAY.head].vp_eligible)
-            VPU->discard_head();
-
          // Full squash, including the mispredicted load, and restart fetching from the load.
+         // The violated load's speculative svp[].instance++ is undone by
+         // squash_complete() -> VPU->repair(vpq_head, vpq_head_phase), which
+         // walks tail back to head inclusive of the head entry itself.
          squash_complete(offending_PC);
          inc_counter(recovery_count);
          inc_counter(ld_vio_count);

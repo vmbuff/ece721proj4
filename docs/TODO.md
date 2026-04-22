@@ -37,11 +37,9 @@ Current state of the `chris` branch (now synced with `vince`).
 ### VAL-5 / VAL-7 regression (VPQ > AL)
 Both fail when VPQ size (300) > AL size (256): IPC ~1.67 vs expected ~2.85, `conf_incorr` ~194k vs expected ~9k. Does not occur when VPQ ≤ AL. See `DEVELOPMENT.md` for full diff analysis.
 
-- [x] **Fix #1 applied (2026-04-22)**: added `discard_head()` for load-violation path — was leaking one SVP instance count per violated VP-eligible load (see DEVELOPMENT.md §Bug #2).
+- [x] **Phase-bit checkpointing applied (2026-04-22)**: `repair()` now compares both position and phase; `vpq_tail_chkpt_phase[64]` saved at rename and passed through both squash call sites. See DEVELOPMENT.md §Bug #1.
+- [x] ~~Load-violation `discard_head()`~~ — retracted; was a no-op misdiagnosis. See DEVELOPMENT.md §Bug #2 retraction.
 - [ ] Rerun VAL-5 / VAL-7 on grendel and compare to reference
-- [ ] If still failing: apply Fix #2 — phase-bit checkpointing in branch-misp repair path (DEVELOPMENT.md §Bug #1)
-
-Note: the phase-bit checkpointing Vincent described in his status report is **not present on any branch**. Confirm with him whether it exists locally before duplicating the work.
 
 ### VAL-6 unconfident misclassification (~1% over threshold)
 - [ ] Investigate SVP state divergence after branch misprediction recovery that causes correctness comparison drift for unconfident predictions at retire

@@ -101,11 +101,14 @@ public:
     void train(unsigned int vpq_index, uint64_t committed_val);
 
     // repair(): called from squash.cc on any squash
-    // Walks VPQ backwards from current tail to restored_vpq_tail,
+    // Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
     // decrementing SVP instance counters for each discarded hit entry.
-    // For branch misp: restored_vpq_tail = saved at checkpoint time.
-    // For squash_complete: restored_vpq_tail = vpq_head (discard everything).
-    void repair(unsigned int restored_vpq_tail);
+    // Phase bit is required: without it, a VPQ wrap of a full vpq_size back
+    // to the saved position makes the position-only loop a no-op and the
+    // speculative instance++ increments are never undone.
+    // For branch misp: restored_* = saved at checkpoint time.
+    // For squash_complete: restored_* = current (vpq_head, vpq_head_phase).
+    void repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase);
 
     // vpq_free_entries(): called from rename2() for stall check
     unsigned int vpq_free_entries();
@@ -118,14 +121,12 @@ public:
     // After a full squash, repair() target is vpq_head (discard everything in flight).
     unsigned int get_vpq_head();
 
-    // discard_head(): called from retire.cc on load-violation path.
-    // The violating load is at vpq_head, was never committed, and train() is skipped
-    // for it -- so its speculative svp[].instance++ from predict() is orphaned.
-    // repair() walks tail-back-to-head exclusive of head itself, so it also cannot
-    // undo this increment. discard_head() decrements the head entry's instance (if
-    // it was a hit) and advances head forward by one, so the subsequent
-    // squash_complete() -> repair(get_vpq_head()) sees a consistent empty VPQ.
-    void discard_head();
+    // Phase-bit getters, paired with get_vpq_tail()/get_vpq_head().
+    // Required so callers can save/restore both position AND phase: a VPQ
+    // that has wrapped a full vpq_size can arrive back at the same position
+    // with the phase flipped, and repair() must know that.
+    bool get_vpq_tail_phase();
+    bool get_vpq_head_phase();
 
     // print_storage(): end of simulation, SVP cost accounting
     // bits/entry = tag + 64(stride) + 64(retired_value) + ceil(log2(vpq_size+1)) + ceil(log2(conf_max+1))

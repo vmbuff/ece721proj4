@@ -20,73 +20,61 @@ Common thread: tests that do not exercise rollback (perfect BP + oracle MDP + or
 
 ---
 
-## Bug #1: VPQ > AL — IPC and conf_incorr blow up (unresolved)
+## Bug #1: VPQ position-only repair (FIXED 2026-04-22)
 
 **Symptom:** When `VPQ_SIZE > AL_SIZE`, IPC drops from 2.85 to 1.67 and `vpmeas_conf_incorr` jumps from ~9k to ~194k. `ld_vio_count` also grows (75 → 103). Does not reproduce when VPQ ≤ AL.
 
-**Root hypothesis (not yet proven):** The repair path in `vpu.cc` compares VPQ positions without phase bits. If VPQ tail wraps a full `vpq_size` back to the same position between checkpoint save and repair, `repair(restored_vpq_tail)` becomes a no-op and the speculative `svp[idx].instance++` increments from `predict()` are never undone. Inflated instance counters then produce wildly wrong `retired_value + instance*stride` predictions on future hits, which retire as confidently-incorrect.
+**Root cause:** The original `repair()` in `vpu.cc` compared VPQ tail positions without phase bits:
+
+```cpp
+while (vpq_tail != restored_vpq_tail) { ... }
+```
+
+In long branch-resolution windows the VPQ can advance a full `vpq_size` between checkpoint save and repair (instructions keep flowing; old entries retire and make room at the tail). When that happens, `vpq_tail` wraps back to the saved position with `vpq_tail_phase` flipped. The position-only loop then exits immediately as a no-op and the entire window of speculative `svp[idx].instance++` increments is orphaned. Inflated instance counters produce wildly wrong `retired_value + instance*stride` predictions on future hits, which retire as confidently-incorrect.
+
+Why this hits VPQ > AL harder: when VPQ < AL, the VPQ stall condition throttles rename and the VPQ rarely fills. When VPQ > AL, AL stalls rename first, VPQ never stalls, and speculative tail can walk much farther — including past the same physical position.
+
+### Fix applied
+
+Position + phase comparison throughout the repair path:
+
+1. **`uarchsim/vpu.h`** — `repair()` signature extended to `repair(unsigned int pos, bool phase)`. Added `get_vpq_tail_phase()` and `get_vpq_head_phase()`.
+2. **`uarchsim/vpu.cc`** — `repair()` loop condition is now `while (vpq_tail != restored_vpq_tail || vpq_tail_phase != restored_vpq_tail_phase)`. New phase getters.
+3. **`uarchsim/pipeline.h`** — added `bool vpq_tail_chkpt_phase[64]` alongside the existing position array.
+4. **`uarchsim/rename.cc`** — checkpoint save stores both position and phase.
+5. **`uarchsim/squash.cc`** — both call sites (`squash_complete` full squash and `resolve` branch-misp) pass both values.
 
 ### What has been ruled out
 
 - **Cache latency config difference (red herring).** An AI-generated diff summary of VAL-5 output vs reference flagged `L2_HIT_LATENCY=10` and `L3_HIT_LATENCY=30` as changes, but these are the defaults in `uarchsim/parameters.cc:111` and `:122`. No VAL config passes `--L2` / `--L3` flags, so both runs use identical cache parameters. Not the cause.
 
-### What has NOT been tried (despite being claimed)
+### Note on prior claim
 
-Vincent reported implementing phase-bit checkpointing as the Moodle-board-recommended fix. **None of that code is present on any branch** (verified 2026-04-22 on `chris` == `vince` == `b134f6f`):
-
-- `vpq_tail_chkpt_phase[64]` — not in `pipeline.h`
-- `get_vpq_tail_phase()` / `get_vpq_head_phase()` — not in `vpu.h`
-- `repair(pos, phase)` two-argument signature — `repair()` in `vpu.cc:210` still takes position only
-- `discard_head()` for load-violation handling — does not exist anywhere
-- rename.cc saves only `VPU->get_vpq_tail()` at `rename.cc:235`, no phase
-
-Either Vincent did the work on an un-pushed local branch, or his description was aspirational. Before doing anything else, confirm with him whether the phase-bit work exists somewhere (stash, local branch, WIP file).
-
-### Specific code sites involved
-
-- **Checkpoint save:** `uarchsim/rename.cc:235` — saves position, no phase
-- **Checkpoint array:** `uarchsim/pipeline.h:370` — `vpq_tail_chkpt[64]`, no phase array
-- **Branch-misp repair call:** `uarchsim/squash.cc:159` — `VPU->repair(vpq_tail_chkpt[branch_ID])`
-- **Full-squash repair call:** `uarchsim/squash.cc:48` — `VPU->repair(VPU->get_vpq_head())`
-- **Repair walk:** `uarchsim/vpu.cc:210-224` — `while (vpq_tail != restored_vpq_tail)` — loop exits on position match alone
+Vincent's earlier status report described implementing phase-bit checkpointing, but no such code was present on any branch as of `b134f6f` on 2026-04-22. The fix above is the first time it has been committed.
 
 ---
 
-## Bug #2: Load violation leaks one SVP instance increment (FIXED 2026-04-22)
+## Bug #2 (retracted): Load violation head-decrement — **not a real bug**
 
-**Symptom:** On a load violation, `retire.cc:233` calls `squash_complete(offending_PC)`, which in turn calls `VPU->repair(VPU->get_vpq_head())`. `repair()` walks tail backward until it equals head, undoing instance increments along the way — but it stops *at* head and never decrements the entry *at* head. The violating load itself was VP-eligible, had its VPQ entry at head, and got `svp[idx].instance++` in `predict()`. That increment is never undone because:
+**Initial claim:** That `repair()` walked `[head+1, tail)` and skipped the head entry itself, orphaning the violating load's `instance++`. Fix proposed: a `discard_head()` helper called from the load-violation retire path.
 
-1. `train()` is skipped — the instruction is not committed (see `retire.cc:76` — `train()` only runs under `!exception && !load_viol`).
-2. `repair()` decrements entries `[head+1, tail)`, not including head itself.
+**Reality:** `repair()` actually decrements the head entry. The loop body steps tail backward *first*, then decrements the entry it lands on:
 
-Each load violation on a VP-eligible PC therefore permanently leaks one instance count. On re-fetch after squash, the same PC gets `predict()` again and bumps instance a second time. Over many violations, prediction = `retired_value + instance*stride` diverges.
+```cpp
+while (vpq_tail != restored_vpq_tail) {
+   if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
+   else                 vpq_tail--;
+   if (vpq[vpq_tail].svp_hit) { ... instance--; }
+}
+```
 
-**Why this could explain VAL-5/7 failing but VAL-6 passing:** The failing configs have 103 load violations vs an unknown-but-likely-smaller number for VAL-6. Leaked instance counts compound with every violation; with VPQ > AL, more VP-eligible instructions are in flight at any time, so more of them are caught by each violation-triggered squash. Ratio effects could plausibly account for the 20× jump in `conf_incorr`.
+Trace with `head=5, tail=10, repair(5)`: walks tail 10→9→8→7→6→5, decrementing entries 9, 8, 7, 6, 5. The loop exits *after* decrementing entry 5 (the head). So the original `squash_complete() → repair(get_vpq_head())` path was correct.
 
-**Fix shape:** Either extend `repair()` to walk *to and including* head for full-squash mode, or add a `discard_head()` method that decrements head's instance and advances head forward past the violating load (Vincent's design). The load-violation retire path at `retire.cc:212-239` would need to call it before `squash_complete()`.
+**Outcome of the fix attempt:** committed `discard_head()` (commit `da8e73d`), pushed, rebuilt on grendel. Output was bit-identical to the pre-fix run. That identical-output result is what forced re-reading the loop — `discard_head()` + `repair(new_head)` decrements the exact same set of entries as `repair(old_head)`, just in a different order. No-op.
 
-### Fix applied (2026-04-22)
+**Rolled back** in the same commit as the Bug #1 fix.
 
-Went with the `discard_head()` approach. Three changes:
-
-1. **`uarchsim/vpu.h`** — added public `void discard_head()` declaration next to `get_vpq_head()`. Comment explains the orphaned-instance invariant and why `repair()` alone can't cover it.
-
-2. **`uarchsim/vpu.cc`** — new `discard_head()` body, mirrors the pattern inside `repair()`: if the head entry was a hit, `assert(instance > 0); instance--`. Then advance `vpq_head` and flip `vpq_head_phase` on wrap. No stats incremented (load violations don't retire, so no vpmeas change).
-
-3. **`uarchsim/retire.cc`** — in the load-violation branch, added
-   ```cpp
-   if (VPU && PAY.buf[PAY.head].vp_eligible)
-      VPU->discard_head();
-   ```
-   between the MDP squash and the `squash_complete(offending_PC)` call. Guarded by `vp_eligible` because a non-eligible violated load never allocated a VPQ entry. Ordering: `discard_head()` advances VPQ head past the violated load, then `squash_complete()` calls `repair(get_vpq_head())` which walks tail back to the new head — correctly undoing every speculative entry including the violated one.
-
-**Ordering proof sketch:** When a VP-eligible load hits the load-violation retire path, it is at `AL.head`. AL commits in-order; VPQ advances only on VP-eligible retirements; all instructions between the last VP-eligible commit and this load were non-eligible (VPQ head did not move). Therefore the violated load's VPQ entry is at `vpq_head`, which is what `discard_head()` operates on.
-
-**Does not cover:** the exception retire path (`retire.cc:240-281`) has the same pattern (no train, calls squash_complete) and would leak instance if the exception-raising instruction were VP-eligible. Benchmark exception_count is 0 for this workload so it doesn't affect scoring, but a defensive `discard_head()` call there would make the invariant airtight.
-
-**Expected impact on VAL-5:** if this is the primary leak, `conf_incorr` should fall from 194,821 toward the reference 9,218. Load-violation count may also drop from 103 toward 75 if leaked-instance-induced wrong predictions were causing secondary violations. If numbers don't fully recover, Bug #1 (phase-bit wrap in branch-misp repair) is the remaining contributor.
-
-**Build status:** `cmake --build build` clean, no warnings.
+**Lesson:** trace the loop on paper before confidently asserting what it touches. "Loop exits when pos==target" doesn't mean the target position isn't processed — depends on whether the step comes before or after the body.
 
 ---
 

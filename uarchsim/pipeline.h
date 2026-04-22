@@ -367,7 +367,11 @@ private:
    // Indexed by branch_ID. Saved when a checkpoint is created in rename2,
    // used by repair() in squash.cc when a branch mispredicts.
    // 64 entries = max unresolved branches (matches GBM width).
+   // Both position AND phase are saved: position alone is insufficient
+   // because the VPQ can wrap a full vpq_size between checkpoint and
+   // mispredict-resolve, arriving at the same position with phase flipped.
    unsigned int vpq_tail_chkpt[64];
+   bool         vpq_tail_chkpt_phase[64];
 
    /////////////////////////////////////////////////////////////
    // Unified L2 and L3 caches.

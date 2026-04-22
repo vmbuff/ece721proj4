@@ -101,6 +101,14 @@ unsigned int vpu_t::get_vpq_head() {
    return vpq_head;
 }
 
+bool vpu_t::get_vpq_tail_phase() {
+   return vpq_tail_phase;
+}
+
+bool vpu_t::get_vpq_head_phase() {
+   return vpq_head_phase;
+}
+
 
 //
 // predict(): called from rename2() per VP-eligible instruction
@@ -204,28 +212,16 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
 
 
 //
-// discard_head(): called from retire.cc on load-violation path
-//
-
-void vpu_t::discard_head() {
-   if (vpq[vpq_head].svp_hit) {
-      unsigned int idx = vpq[vpq_head].svp_index;
-      assert(svp[idx].instance > 0);
-      svp[idx].instance--;
-   }
-   vpq_head++;
-   if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
-}
-
-
-//
 // repair(): called from squash.cc on any pipeline squash
 //
 
-void vpu_t::repair(unsigned int restored_vpq_tail) {
-   // Walk backward from current tail to the restore point,
+void vpu_t::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
+   // Walk backward from current (tail, tail_phase) to (restored, restored_phase),
    // undoing speculative instance increments for each discarded hit entry.
-   while (vpq_tail != restored_vpq_tail) {
+   // Comparing both position AND phase is required: in long branch-resolution
+   // windows the VPQ can wrap a full vpq_size back to the same position with
+   // phase flipped; position-only would make this a no-op.
+   while (vpq_tail != restored_vpq_tail || vpq_tail_phase != restored_vpq_tail_phase) {
       // Step backward
       if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
       else                 vpq_tail--;

@@ -229,10 +229,14 @@ void pipeline_t::rename2() {
       if(PAY.buf[index].checkpoint) {
          PAY.buf[index].branch_ID = REN->checkpoint();
 
-         // Project 4: save VPQ tail so squash.cc can repair() to this point
-         // on a branch misprediction. Indexed by branch_ID.
-         if (VPU)
-            vpq_tail_chkpt[PAY.buf[index].branch_ID] = VPU->get_vpq_tail();
+         // Project 4: save VPQ tail (position + phase) so squash.cc can
+         // repair() to this point on a branch misprediction. Indexed by
+         // branch_ID. Phase is required for correctness when the VPQ wraps
+         // a full vpq_size between now and the misprediction.
+         if (VPU) {
+            vpq_tail_chkpt[PAY.buf[index].branch_ID]       = VPU->get_vpq_tail();
+            vpq_tail_chkpt_phase[PAY.buf[index].branch_ID] = VPU->get_vpq_tail_phase();
+         }
       }
       // FIX_ME #5 END
 
