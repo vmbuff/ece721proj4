@@ -42,15 +42,20 @@ vpu_t::~vpu_t() {
 // Helpers
 //
 
-// PC layout: [63 ... | tag | index | 0]
-// Bit 0 is always 0 (RISC-V alignment), discard it.
+// PC layout per spec (proj4-vp-v1.pdf page 2):
+//   PC: 00 | PCindex | PCtag | ...
+//   bits 0,1 are "00" (4-byte-aligned RV instructions); PCindex starts at bit 2.
+// Using >>1 instead of >>2 halves the effective slot count because bit 1 is
+// always 0 and folds into the index -- only even slots get used, doubling
+// aliasing. This had no visible effect on VAL-5/6 (1024 slots, plenty of
+// capacity) but doubled miss rate on VAL-7 (128 slots, capacity-bound).
 unsigned int vpu_t::get_svp_index(uint64_t pc) {
-   return (unsigned int)((pc >> 1) & ((1U << svp_index_bits) - 1));
+   return (unsigned int)((pc >> 2) & ((1U << svp_index_bits) - 1));
 }
 
 uint64_t vpu_t::get_svp_tag(uint64_t pc) {
    if (svp_tag_bits == 0) return 0;
-   return (pc >> (1 + svp_index_bits)) & ((1ULL << svp_tag_bits) - 1);
+   return (pc >> (2 + svp_index_bits)) & ((1ULL << svp_tag_bits) - 1);
 }
 
 bool vpu_t::tag_matches(unsigned int idx, uint64_t pc) {
@@ -173,56 +178,53 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
    uint64_t pc = vpq[vpq_index].pc;
 
    if (svp[idx].valid && tag_matches(idx, pc)) {
-      // Tag match: only update state if this VPQ entry actually predicted
-      // against the current SVP entry. If svp_hit was false at predict
-      // (svp was replaced and then replaced back to a tag matching this
-      // entry's PC), the entry's committed value has no meaningful
-      // relationship to the current entry's retired_value/stride/conf.
-      // Touching them would pollute a stable hot entry with a spurious
-      // stride, resetting conf. Skip the entire update in that case.
+      // Tag match: train the existing entry per spec (page 2):
+      //   new_stride = (value - retired_value)
+      //   if (new_stride == stride) {conf += 1 (saturate)} else {stride = new_stride; conf = 0;}
+      //   retired_value = value
+      //   instance -= 1
+      // The instance decrement is skipped for svp_hit=false entries: no
+      // predict-time ++ happened for them (svp was replaced between predict
+      // and train back to a tag matching this entry's PC).
+      int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
+
+      if (new_stride == svp[idx].stride) {
+         if (svp[idx].conf < svp_conf_max)
+            svp[idx].conf++;
+      }
+      else {
+         svp[idx].stride = new_stride;
+         svp[idx].conf   = 0;
+      }
+
+      svp[idx].retired_value = committed_val;
+
       if (vpq[vpq_index].svp_hit) {
-         int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
-
-         if (new_stride == svp[idx].stride) {
-            if (svp[idx].conf < svp_conf_max)
-               svp[idx].conf++;
-         }
-         else {
-            svp[idx].stride = new_stride;
-            svp[idx].conf   = 0;
-         }
-
-         svp[idx].retired_value = committed_val;
-
          assert(svp[idx].instance > 0);
          svp[idx].instance--;
       }
    }
    else {
-      // Tag miss or invalid. Only replace if the slot is unoccupied
-      // (not valid) or the current entry has lost confidence (conf == 0).
-      // A confident hot entry should survive aliasing collisions --
-      // unconditional replacement causes severe thrashing when many PCs
-      // alias on the same svp_index (VAL-7: 128 entries, 10-bit tags).
-      if (!svp[idx].valid || svp[idx].conf == 0) {
-         svp[idx].tag           = get_svp_tag(pc);
-         svp[idx].retired_value = committed_val;
-         svp[idx].stride        = (int64_t)committed_val;  // spec: "retired_value = stride = value"
-         svp[idx].conf          = 0;
-         svp[idx].valid         = true;
+      // Tag miss or invalid: replace the entry (spec page 2, unconditional).
+      //   tag = PCtag
+      //   conf = 0
+      //   retired_value = stride = value
+      //   instance = {walk VPQ H to T to determine}
+      svp[idx].tag           = get_svp_tag(pc);
+      svp[idx].retired_value = committed_val;
+      svp[idx].stride        = (int64_t)committed_val;
+      svp[idx].conf          = 0;
+      svp[idx].valid         = true;
 
-         // Instance = how many other in-flight instrs map to this index
-         // AND satisfy the instance invariant (svp_hit=T, tag match).
-         unsigned int save_head = vpq_head;
-         bool save_phase = vpq_head_phase;
-         vpq_head++;
-         if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
-         svp[idx].instance = count_inflight_instances(idx);
-         vpq_head = save_head;
-         vpq_head_phase = save_phase;
-      }
-      // else: confident entry kept, this retire's data is dropped.
-      // No svp mutation, no instance change.
+      // Temporarily advance head past the entry we're about to free so
+      // count_inflight_instances excludes it.
+      unsigned int save_head = vpq_head;
+      bool save_phase = vpq_head_phase;
+      vpq_head++;
+      if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+      svp[idx].instance = count_inflight_instances(idx);
+      vpq_head = save_head;
+      vpq_head_phase = save_phase;
    }
 
    // Free VPQ head
