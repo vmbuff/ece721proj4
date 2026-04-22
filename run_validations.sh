@@ -12,7 +12,8 @@
 # Adjust MICRO_DIR if the array2.riscv / if2.riscv microbenchmarks live
 # somewhere other than the default.
 
-set -u
+# Not using `set -u` because the SPEC activate.bash references unset
+# variables (e.g., ATOOL_NO_AUTOCOMPLETION).
 
 # --- paths (override via env if needed) -------------------------------------
 REPO_ROOT="${REPO_ROOT:-$HOME/ece721/project4}"
