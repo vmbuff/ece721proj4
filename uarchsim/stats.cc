@@ -21,6 +21,17 @@ stats_t::stats_t(pipeline_t *_proc) {
    DECLARE_COUNTER(this, vpmeas_conf_incorr       ,proc);
    DECLARE_COUNTER(this, vpmeas_unconf_corr       ,proc);
    DECLARE_COUNTER(this, vpmeas_unconf_incorr     ,proc);
+
+   // Diagnostic counters (temporary) for VAL-5/7 debugging.
+   // If these appear in the stats file, the fresh binary is running.
+   // Expected relationships on a correct run:
+   //   vpu_valmisp_detected ~= vpu_valmisp_retired ~= vpmeas_conf_incorr
+   //   vpu_repair_branch    ~= 37k (branch misp count)
+   //   vpu_repair_full      ~= vpu_valmisp_retired + ld_vio_count + exceptions
+   DECLARE_COUNTER(this, vpu_valmisp_detected     ,proc);
+   DECLARE_COUNTER(this, vpu_valmisp_retired      ,proc);
+   DECLARE_COUNTER(this, vpu_repair_branch        ,proc);
+   DECLARE_COUNTER(this, vpu_repair_full          ,proc);
    
 #if 0
   DECLARE_COUNTER(this, load_count                ,proc);

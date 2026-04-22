@@ -87,6 +87,7 @@ void pipeline_t::execute(unsigned int lane_number) {
                   // If actual value differs from predicted value, post a value misprediction to the Active list
                   if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                      REN->set_value_misprediction(PAY.buf[index].AL_index);
+                     inc_counter(vpu_valmisp_detected);
                   }
                }
             }
@@ -154,6 +155,7 @@ void pipeline_t::execute(unsigned int lane_number) {
                // If actual value differs from predicted value, post a value misprediction to the Active list
                if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                   REN->set_value_misprediction(PAY.buf[index].AL_index);
+                  inc_counter(vpu_valmisp_detected);
                }
             }
          }
@@ -287,6 +289,7 @@ void pipeline_t::load_replay() {
             // If actual value differs from predicted value, post a value misprediction to the Active list
             if(PAY.buf[index].C_value.dw != PAY.buf[index].vp_val) {
                REN->set_value_misprediction(PAY.buf[index].AL_index);
+               inc_counter(vpu_valmisp_detected);
             }
          }
          // FIX_ME #18a END

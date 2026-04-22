@@ -185,8 +185,10 @@ void pipeline_t::retire(size_t &instret) {
             reg_t next_inst_pc;
             if (br_misp)
                next_inst_pc = PAY.buf[PAY.head].c_next_pc;
-            else
+            else {
                next_inst_pc = INCREMENT_PC(PAY.buf[PAY.head].pc);
+               inc_counter(vpu_valmisp_retired);
+            }
 
             if (STORE_SETS || ORACLE_MDP) {
                MDP->squash();
