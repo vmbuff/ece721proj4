@@ -118,6 +118,15 @@ public:
     // After a full squash, repair() target is vpq_head (discard everything in flight).
     unsigned int get_vpq_head();
 
+    // discard_head(): called from retire.cc on load-violation path.
+    // The violating load is at vpq_head, was never committed, and train() is skipped
+    // for it -- so its speculative svp[].instance++ from predict() is orphaned.
+    // repair() walks tail-back-to-head exclusive of head itself, so it also cannot
+    // undo this increment. discard_head() decrements the head entry's instance (if
+    // it was a hit) and advances head forward by one, so the subsequent
+    // squash_complete() -> repair(get_vpq_head()) sees a consistent empty VPQ.
+    void discard_head();
+
     // print_storage(): end of simulation, SVP cost accounting
     // bits/entry = tag + 64(stride) + 64(retired_value) + ceil(log2(vpq_size+1)) + ceil(log2(conf_max+1))
     // VPQ excluded from budget per spec.

@@ -1,11 +1,12 @@
 # Project 4 TODO
 
-Current state of the `chris` branch.
+Current state of the `chris` branch (now synced with `vince`).
 
 ---
 
 ## Done
 
+### Chris's original work (merged to main via PR #4)
 - [x] `vpu.h` interface (SVP + VPQ class, predict/train/repair/print_storage)
 - [x] `vpu.cc` full implementation
 - [x] `payload.h` VP fields (vp_eligible, vp_svp_hit, vp_confident, vpq_index)
@@ -14,52 +15,39 @@ Current state of the `chris` branch.
 - [x] `pipeline.cc` VPU instantiation gated on SVP_ENABLED
 - [x] `parameters.h/cc` SVP_ENABLED, SVP_ORACLE_CONF, VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX
 - [x] `main.cc` `--vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>` CLI + mutex check with --vp-perf
-- [x] `retire.cc` VPU->train() stub (Chris did V2 so testing could proceed)
-- [x] `squash.cc` VPU->repair() stubs in squash_complete and resolve misp (Chris did V4)
 - [x] Build passes at 100%
-- [x] Ran baseline + perfect VP mode without regressions on grendel
-- [x] **VAL-2 validation: IPC 3.72 and cycle_count 2687129 exactly match reference**
 - [x] Fixed instance++ ordering bug in predict() (increment before computing prediction)
+
+### Vincent's work (commits c1e8271..b134f6f on `vince`)
+- [x] **V1**: `execute.cc` misprediction detection at the three `REN->write()` sites (ALU path, load hit, load replay) — commit c1e8271
+- [x] **V2**: `retire.cc` real training-at-retirement logic (replaced Chris's stub) — commit 5baafba
+- [x] **V3**: `stats.cc` 7 vpmeas counters + `retire.cc` classification logic — commit 29e9c5b
+- [x] **V6b**: `VPU->print_storage()` + VP config logging in `pipeline.cc` — commit b134f6f
+- [x] Phase bit checkpointing: `vpq_tail_chkpt_phase[64]`, `get_vpq_tail_phase()`/`get_vpq_head_phase()`, `repair(pos, phase)` signature, `discard_head()` for load-violation handling
+
+### Validation status (per Vincent, as of 2026-04-21)
+- [x] **VAL-1** (perfect VP): passing — IPC + all vpmeas counters match
+- [x] **VAL-2, VAL-3, VAL-4** (SVP + oracle conf, rollback-free): passing — IPC + vpmeas + storage cost all match
+- [x] **VAL-6** (SVP + real conf, VPQ=100 < AL=256): IPC, conf_corr, conf_incorr match exactly. ~11766-instr misclassification between `vpmeas_unconf_corr` ↔ `vpmeas_unconf_incorr` — just over 1% threshold (43/50 expected)
 
 ---
 
-## Still Needed (Vincent)
+## Still Needed
 
-### V1: execute.cc misprediction detection
+### VAL-5 / VAL-7 regression (VPQ > AL)
+Both fail when VPQ size (300) > AL size (256): IPC ~1.67 vs expected ~2.85, `conf_incorr` ~194k vs expected ~9k. Does not occur when VPQ ≤ AL. See `DEVELOPMENT.md` for full diff analysis.
 
-Three `REN->write()` call sites need a VP check. If `vp_pred` and computed value differs from `vp_val`: call `set_value_misprediction(AL_index)` and write correct value. If match: skip write (Slide 45 optimization). If not predicted: write normally.
+- [x] **Fix #1 applied (2026-04-22)**: added `discard_head()` for load-violation path — was leaking one SVP instance count per violated VP-eligible load (see DEVELOPMENT.md §Bug #2).
+- [ ] Rerun VAL-5 / VAL-7 on grendel and compare to reference
+- [ ] If still failing: apply Fix #2 — phase-bit checkpointing in branch-misp repair path (DEVELOPMENT.md §Bug #1)
 
-- [ ] ALU path (FIX_ME #14, line ~140)
-- [ ] Load hit path (FIX_ME #13, line ~82)
-- [ ] Load replay path (FIX_ME #18a in `load_replay()`, line ~264)
+Note: the phase-bit checkpointing Vincent described in his status report is **not present on any branch**. Confirm with him whether it exists locally before duplicating the work.
 
-**Do NOT use `actual->a_rdst[0].value` to check correctness.** Spec deducts for this.
+### VAL-6 unconfident misclassification (~1% over threshold)
+- [ ] Investigate SVP state divergence after branch misprediction recovery that causes correctness comparison drift for unconfident predictions at retire
 
-### V3: vpmeas statistics
-
-**stats.cc**: declare 7 counters via DECLARE_COUNTER:
-- [ ] vpmeas_ineligible
-- [ ] vpmeas_eligible
-- [ ] vpmeas_miss
-- [ ] vpmeas_conf_corr
-- [ ] vpmeas_conf_incorr
-- [ ] vpmeas_unconf_corr
-- [ ] vpmeas_unconf_incorr
-
-**retire.cc**: at commit (before `num_insn++`), increment the appropriate counter based on payload fields `vp_eligible`, `vp_svp_hit`, `vp_confident`, and a correctness check (predicted `vp_val` vs actual committed value from PRF).
-
-- [ ] Implement the classification logic
-- [ ] Output format must match Gradescope validation runs exactly
-
-### V6b: print_storage call
-
-- [ ] At end of simulation (wherever stats are dumped), call `VPU->print_storage(stats_log)` if `VPU` is non-null
-
-### Optional: review Chris's stubs
-
-Chris wrote temporary stubs for V2 and V4 to unblock testing. They're functionally correct but Vince should review and keep/replace as he prefers:
-- [ ] retire.cc training call after `REN->commit()`
-- [ ] squash.cc repair calls in `squash_complete()` and `resolve()` branch misp path
+### Ruled out: cache latency
+A diff summary of VAL-5 output vs reference flagged `L2_HIT_LATENCY=10` and `L3_HIT_LATENCY=30` as "changes," but these are the defaults in `parameters.cc` (lines 111, 122) and no VAL config passes `--L2` / `--L3` flags — both runs use identical cache params. Not a factor in the VPQ > AL regression.
 
 ---
 

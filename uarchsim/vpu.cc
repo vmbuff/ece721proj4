@@ -204,6 +204,21 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
 
 
 //
+// discard_head(): called from retire.cc on load-violation path
+//
+
+void vpu_t::discard_head() {
+   if (vpq[vpq_head].svp_hit) {
+      unsigned int idx = vpq[vpq_head].svp_index;
+      assert(svp[idx].instance > 0);
+      svp[idx].instance--;
+   }
+   vpq_head++;
+   if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+}
+
+
+//
 // repair(): called from squash.cc on any pipeline squash
 //
 
