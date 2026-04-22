@@ -59,15 +59,18 @@ bool vpu_t::tag_matches(unsigned int idx, uint64_t pc) {
    return (svp[idx].tag == get_svp_tag(pc));
 }
 
-// Walk VPQ head to tail counting entries that map to the given SVP index.
-// Used during replacement to init the instance counter.
+// Walk VPQ head to tail counting entries that map to the given SVP index
+// AND whose PC matches the current SVP tag. Used during replacement to
+// init the instance counter. Filtering by tag (not just svp_index) is
+// required when tag_bits > 0: other PCs aliasing on the same svp_index
+// must not be counted as in-flight instances of the new SVP entry.
 uint64_t vpu_t::count_inflight_instances(unsigned int svp_index) {
    uint64_t count = 0;
    unsigned int pos = vpq_head;
    bool phase = vpq_head_phase;
 
    while (!(pos == vpq_tail && phase == vpq_tail_phase)) {
-      if (vpq[pos].svp_index == svp_index)
+      if (vpq[pos].svp_index == svp_index && tag_matches(svp_index, vpq[pos].pc))
          count++;
       pos++;
       if (pos == vpq_size) { pos = 0; phase = !phase; }
