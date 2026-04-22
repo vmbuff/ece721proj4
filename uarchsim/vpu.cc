@@ -59,18 +59,23 @@ bool vpu_t::tag_matches(unsigned int idx, uint64_t pc) {
    return (svp[idx].tag == get_svp_tag(pc));
 }
 
-// Walk VPQ head to tail counting entries that map to the given SVP index
-// AND whose PC matches the current SVP tag. Used during replacement to
-// init the instance counter. Filtering by tag (not just svp_index) is
-// required when tag_bits > 0: other PCs aliasing on the same svp_index
-// must not be counted as in-flight instances of the new SVP entry.
+// Walk VPQ head to tail counting entries that will actually contribute a
+// future decrement to svp[svp_index].instance. An entry qualifies iff:
+//   (a) svp_hit=true at predict time (the entry actually did instance++), AND
+//   (b) its PC tag matches the CURRENT svp[svp_index].tag (the entry will
+//       hit the tag-match decrement path at train, not the tag-miss replace).
+// Counting entries that fail (a) or (b) creates "phantom" instance increments
+// that are never decremented -- causing instance drift, confidently wrong
+// predictions whose stride remains correct, and persistent conf_incorr.
 uint64_t vpu_t::count_inflight_instances(unsigned int svp_index) {
    uint64_t count = 0;
    unsigned int pos = vpq_head;
    bool phase = vpq_head_phase;
 
    while (!(pos == vpq_tail && phase == vpq_tail_phase)) {
-      if (vpq[pos].svp_index == svp_index && tag_matches(svp_index, vpq[pos].pc))
+      if (vpq[pos].svp_index == svp_index &&
+          vpq[pos].svp_hit &&
+          tag_matches(svp_index, vpq[pos].pc))
          count++;
       pos++;
       if (pos == vpq_size) { pos = 0; phase = !phase; }
@@ -184,9 +189,16 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
 
       svp[idx].retired_value = committed_val;
 
-      // This instruction is no longer in-flight
-      assert(svp[idx].instance > 0);
-      svp[idx].instance--;
+      // Only decrement instance if this VPQ entry actually did instance++
+      // at predict time. If svp_hit was false (svp was invalid or tag
+      // mismatched at predict), no ++ happened, and a blind -- would
+      // create a leak. svp_hit can be false here only if svp[idx] was
+      // replaced between predict and train back to a tag that matches
+      // this entry's PC.
+      if (vpq[vpq_index].svp_hit) {
+         assert(svp[idx].instance > 0);
+         svp[idx].instance--;
+      }
    }
    else {
       // Tag miss or invalid: replace the entry
@@ -229,8 +241,14 @@ void vpu_t::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase)
       if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
       else                 vpq_tail--;
 
-      // Undo the instance increment that predict() did for this entry
-      if (vpq[vpq_tail].svp_hit) {
+      // Undo the instance increment that predict() did for this entry.
+      // Only decrement if the entry's PC tag STILL matches the current
+      // svp tag -- if svp[idx] has been replaced since this entry's
+      // predict, the ++ went to a tag that no longer exists; decrementing
+      // the new tag's instance is erroneous (it makes the new tag's
+      // instance negative / under-counts).
+      if (vpq[vpq_tail].svp_hit &&
+          tag_matches(vpq[vpq_tail].svp_index, vpq[vpq_tail].pc)) {
          assert(svp[vpq[vpq_tail].svp_index].instance > 0);
          svp[vpq[vpq_tail].svp_index].instance--;
       }
