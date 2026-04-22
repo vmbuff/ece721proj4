@@ -44,10 +44,8 @@ void pipeline_t::squash_complete(reg_t jump_PC) {
    // Project 4 - VP: Discard all in-flight VPQ entries. After REN->squash(),
    // AL is empty so VPQ should be drained too. Repair to (head, head_phase)
    // empties it and undoes any speculative instance increments.
-   if (VPU) {
+   if (VPU)
       VPU->repair(VPU->get_vpq_head(), VPU->get_vpq_head_phase());
-      inc_counter(vpu_repair_full);
-   }
 
 
    //////////////////////////
@@ -158,9 +156,7 @@ void pipeline_t::resolve(unsigned int branch_ID, bool correct) {
 
       // Project 4 - VP: repair VPQ back to the (tail, tail_phase) saved
       // at this branch's checkpoint.
-      if (VPU) {
+      if (VPU)
          VPU->repair(vpq_tail_chkpt[branch_ID], vpq_tail_chkpt_phase[branch_ID]);
-         inc_counter(vpu_repair_branch);
-      }
    }
 }

@@ -426,7 +426,7 @@ pipeline_t::pipeline_t(
 
    // Project 4 - Value Prediction
    // Print value prediction configuration and cost accounting information
-   fprintf(stats_log, "\n=== VALUE PREDICTOR =============================================================\n\n");
+   fprintf(stats_log, "\n=== VALUE PREDICTOR ============================================================\n\n");
 
    fprintf(stats_log, "VP-eligible configuration:\n");
    fprintf(stats_log, "   predINTALU = %d\n",   (predINTALU ? 1 : 0));
@@ -441,7 +441,7 @@ pipeline_t::pipeline_t(
    } else if (VPU) {
       fprintf(stats_log, "VALUE PREDICTOR = stride (Project 4 spec. implementation)\n");
       fprintf(stats_log, "   VPQsize         = %u\n", VPQ_SIZE);
-      fprintf(stats_log, "   oracleconf      = %d (%s)\n", (SVP_ORACLE_CONF ? 1 : 0), (SVP_ORACLE_CONF ? "(oracle confidence)" : "(real confidence)"));
+      fprintf(stats_log, "   oracleconf      = %d (%s)\n", (SVP_ORACLE_CONF ? 1 : 0), (SVP_ORACLE_CONF ? "oracle confidence" : "real confidence"));
       fprintf(stats_log, "   # index bits    = %u\n", SVP_INDEX_BITS);
       fprintf(stats_log, "   # tag bits      = %u\n", SVP_TAG_BITS);
       fprintf(stats_log, "   confmax         = %u\n", SVP_CONF_MAX);
