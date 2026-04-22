@@ -173,51 +173,56 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
    uint64_t pc = vpq[vpq_index].pc;
 
    if (svp[idx].valid && tag_matches(idx, pc)) {
-      // Tag match: train the existing entry
-      int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
-
-      if (new_stride == svp[idx].stride) {
-         // Stride confirmed, gain confidence (saturate at conf_max)
-         if (svp[idx].conf < svp_conf_max)
-            svp[idx].conf++;
-      }
-      else {
-         // Stride changed, adopt new stride and reset confidence
-         svp[idx].stride = new_stride;
-         svp[idx].conf   = 0;
-      }
-
-      svp[idx].retired_value = committed_val;
-
-      // Only decrement instance if this VPQ entry actually did instance++
-      // at predict time. If svp_hit was false (svp was invalid or tag
-      // mismatched at predict), no ++ happened, and a blind -- would
-      // create a leak. svp_hit can be false here only if svp[idx] was
-      // replaced between predict and train back to a tag that matches
-      // this entry's PC.
+      // Tag match: only update state if this VPQ entry actually predicted
+      // against the current SVP entry. If svp_hit was false at predict
+      // (svp was replaced and then replaced back to a tag matching this
+      // entry's PC), the entry's committed value has no meaningful
+      // relationship to the current entry's retired_value/stride/conf.
+      // Touching them would pollute a stable hot entry with a spurious
+      // stride, resetting conf. Skip the entire update in that case.
       if (vpq[vpq_index].svp_hit) {
+         int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
+
+         if (new_stride == svp[idx].stride) {
+            if (svp[idx].conf < svp_conf_max)
+               svp[idx].conf++;
+         }
+         else {
+            svp[idx].stride = new_stride;
+            svp[idx].conf   = 0;
+         }
+
+         svp[idx].retired_value = committed_val;
+
          assert(svp[idx].instance > 0);
          svp[idx].instance--;
       }
    }
    else {
-      // Tag miss or invalid: replace the entry
-      svp[idx].tag           = get_svp_tag(pc);
-      svp[idx].retired_value = committed_val;
-      svp[idx].stride        = (int64_t)committed_val;  // spec: "retired_value = stride = value"
-      svp[idx].conf          = 0;
-      svp[idx].valid         = true;
+      // Tag miss or invalid. Only replace if the slot is unoccupied
+      // (not valid) or the current entry has lost confidence (conf == 0).
+      // A confident hot entry should survive aliasing collisions --
+      // unconditional replacement causes severe thrashing when many PCs
+      // alias on the same svp_index (VAL-7: 128 entries, 10-bit tags).
+      if (!svp[idx].valid || svp[idx].conf == 0) {
+         svp[idx].tag           = get_svp_tag(pc);
+         svp[idx].retired_value = committed_val;
+         svp[idx].stride        = (int64_t)committed_val;  // spec: "retired_value = stride = value"
+         svp[idx].conf          = 0;
+         svp[idx].valid         = true;
 
-      // Instance = how many other in-flight instrs map to this index.
-      // Temporarily advance head past the entry we're about to free,
-      // count, then restore. This excludes the current entry from the count.
-      unsigned int save_head = vpq_head;
-      bool save_phase = vpq_head_phase;
-      vpq_head++;
-      if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
-      svp[idx].instance = count_inflight_instances(idx);
-      vpq_head = save_head;
-      vpq_head_phase = save_phase;
+         // Instance = how many other in-flight instrs map to this index
+         // AND satisfy the instance invariant (svp_hit=T, tag match).
+         unsigned int save_head = vpq_head;
+         bool save_phase = vpq_head_phase;
+         vpq_head++;
+         if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+         svp[idx].instance = count_inflight_instances(idx);
+         vpq_head = save_head;
+         vpq_head_phase = save_phase;
+      }
+      // else: confident entry kept, this retire's data is dropped.
+      // No svp mutation, no instance change.
    }
 
    // Free VPQ head
