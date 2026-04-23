@@ -49,6 +49,8 @@ void pipeline_t::register_read(unsigned int lane_number) {
       // FIX_ME #11a BEGIN
       if (PAY.buf[index].C_valid && (lat == 1) && !IS_LOAD(PAY.buf[index].flags) && !IS_AMO(PAY.buf[index].flags)) {
          // Project 4 - Value Prediction
+         // If instruction was value predicted, suppress wakeup call
+         // Destination register was already marked ready at dispatch
          if(!PAY.buf[index].vp_pred) {
             IQ.wakeup(PAY.buf[index].C_phys_reg, true);
          }

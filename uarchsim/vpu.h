@@ -1,61 +1,50 @@
-// vpu.h
-// Stride Value Predictor (SVP) + Value Prediction Queue (VPQ)
-//
-// SVP: direct-mapped table indexed by PC, learns stride patterns per PC.
-// VPQ: circular FIFO tracking in-flight VP-eligible instrs. Needed because
-//      SVP trains in-order at retire, but instrs execute OOO. Also handles
-//      instance counter init on replacement and repair on squash.
-// VPQ is a structural hazard, rename stalls if not enough free entries.
-// Only SVP counts toward competition storage budget (VPQ excluded).
-
+// Project 4 - Value Prediction
 #ifndef VPU_H
 #define VPU_H
 
+// Include statements
 #include <cstdint>
 #include <cstdio>
 
-class vpu_t {
-
+// VPU Class
+// Creates the Strided Value Predictor (SVP) and Value Prediction Queue (VPQ) structures
+class vpu {
 private:
-
     // SVP entry
-    // prediction = retired_value + instance * stride
-    // instance: speculatively incremented at rename, decremented at retire,
-    //           repaired on squash. Tracks how many in-flight copies of this PC exist.
-    // conf: saturating counter, prediction only injected when conf == conf_max.
-    //       increments when stride confirmed at retire, resets when stride changes.
+    // Prediction formula: retired_value + instance * stride
+    // Instance is speculatively incremented at Rename and decremented at retirement
+    // conf is a saturating counter — prediction is only injected when conf == conf_max
     struct svp_entry_t {
         uint64_t     tag;
-        int64_t      stride;         // must be signed per spec
-        uint64_t     retired_value;  // last committed value
-        uint64_t     instance;       // in-flight count (speculative)
-        unsigned int conf;
-        bool         valid;
+        int64_t      stride;            // Signed per spec
+        uint64_t     retired_value;     // Last committed destination value for this PC
+        uint64_t     instance;          // Number of in-flight copies of this PC (speculative)
+        unsigned int conf;              // Confidence counter
+        bool         valid;             // If true, this SVP entry contains valid data
     };
 
     // VPQ entry
-    // Allocated at rename (tail), freed at retire (head).
-    // Stores enough to train SVP at retire and compute vpmeas_* stats.
-    // predicted_value stored even for unconfident predictions (needed for stats).
+    // Allocated at Rename (tail) and freed at retirement (head)
+    // Stores enough information to train the SVP at retirement and compute vpmeas stats
     struct vpq_entry_t {
         uint64_t     pc;
-        unsigned int svp_index;       // cached so we don't recompute at retire
+        unsigned int svp_index;         // SVP index for this PC, cached to avoid recomputation at retirement
         uint64_t     predicted_value;
-        bool         svp_hit;         // tag matching valid entry existed
-        bool         confident;       // conf == conf_max at prediction time
+        bool         svp_hit;           // If true, SVP had a valid tag-matching entry at prediction time
+        bool         confident;         // If true, conf == conf_max at prediction time
     };
 
-    // SVP table, (1U << index_bits) entries, direct mapped. Use 1U to avoid int overflow.
+    // SVP table
+    // Is direct-mapped
     svp_entry_t *svp;
     unsigned int svp_num_entries;
     unsigned int svp_index_bits;
-    unsigned int svp_tag_bits;       // 0 = no tag check
+    unsigned int svp_tag_bits;          // 0 = no tag check
     unsigned int svp_conf_max;
 
-    // VPQ circular buffer, head = oldest (retire side), tail = next free (rename side)
-    // Phase bits distinguish full vs empty (same pattern as renamer FL/AL).
-    // head == tail && phases match = empty, phases differ = full.
-    // Size it large (>= AL size) so it rarely stalls rename. No storage cost.
+    // VPQ circular buffer
+    // head = oldest entry (retirement side), tail = next free slot (Rename side)
+    // Phase bits distinguish full from empty when head == tail (same pattern as renamer FL/AL)
     vpq_entry_t *vpq;
     unsigned int vpq_size;
     unsigned int vpq_head;
@@ -63,74 +52,64 @@ private:
     unsigned int vpq_tail;
     bool         vpq_tail_phase;
 
-    // Helpers
-    // PC bit layout: [63 ... | tag | index | 0]  (bit 0 discarded, always 0)
-    unsigned int get_svp_index(uint64_t pc);   // (pc >> 1) & ((1 << index_bits) - 1)
-    uint64_t get_svp_tag(uint64_t pc);         // (pc >> (1 + index_bits)) & ((1 << tag_bits) - 1)
-    bool tag_matches(unsigned int svp_index, uint64_t pc); // true if tag_bits==0 or tags equal
-    uint64_t count_inflight_instances(unsigned int svp_index); // walk VPQ head to tail counting matches
+    // Extracts SVP index bits from PC to determine which SVP entry this instruction maps to
+    unsigned int get_svp_index(uint64_t pc);
+
+    // Extracts SVP tag bits from PC to identify the instruction within its SVP entry
+    uint64_t get_svp_tag(uint64_t pc);
+
+    // Returns true if no tags are used (svp_tag_bits == 0) or the stored tag matches the PC tag
+    bool tag_matches(unsigned int idx, uint64_t pc);
+
+    // Walks VPQ from head to tail counting in-flight entries that will decrement
+    // instance at retirement — only counts hit entries whose tag still matches
+    uint64_t count_inflight_instances(unsigned int svp_index);
 
 public:
+    // Constructor — parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
+    // oracleconf is handled externally in rename.cc and not stored here
+    vpu(unsigned int vpq_size,
+        unsigned int index_bits,
+        unsigned int tag_bits,
+        unsigned int conf_max);
+    ~vpu();
 
-    // Constructor
-    // Maps to: --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
-    // oracleconf handled externally in rename.cc, not stored here
-    vpu_t(unsigned int vpq_size,
-          unsigned int index_bits,
-          unsigned int tag_bits,
-          unsigned int conf_max);
-    ~vpu_t();
-
-    // predict(): called from rename2() per VP-eligible instr
-    // Looks up SVP[pc], returns hit/miss.
-    // On hit: out_predicted_val = retired_value + instance*stride,
-    //         out_confident = (conf == conf_max). Increments instance speculatively.
-    // Always allocates a VPQ entry (even on miss, needed for retire training + squash repair).
-    // out_vpq_index: store in payload so retire can reference it later.
-    // Returns true on SVP hit, false on miss.
+    // Called from rename2() per VP-eligible instruction
+    // Looks up SVP by PC — on hit, computes predicted value and confidence, increments instance
+    // Always allocates a VPQ entry (even on miss) for retirement training and squash repair
+    // Returns true on SVP hit, false on miss
     bool predict(uint64_t pc,
-                 uint64_t &out_predicted_val,
-                 bool &out_confident,
-                 unsigned int &out_vpq_index);
+                    uint64_t &out_predicted_val,
+                    bool &out_confident,
+                    unsigned int &out_vpq_index);
 
-    // train(): called from retire.cc per VP-eligible retired instr
-    // Uses VPQ entry to train SVP in program order.
-    // Tag match: update stride/conf/retired_value, decrement instance.
-    // Tag miss: replace entry, init instance by walking VPQ to count in-flight peers.
-    // Frees VPQ head after training.
+    // Called from retire.cc per VP-eligible retired instruction
+    // Trains SVP in program order using committed value from PRF
+    // Tag match: updates stride, conf, retired_value, decrements instance
+    // Tag miss: replaces entry, initializes instance by counting in-flight peers in VPQ
+    // Frees VPQ head entry after training
     void train(unsigned int vpq_index, uint64_t committed_val);
 
-    // repair(): called from squash.cc on any squash
+    // Called from squash.cc on any pipeline squash
     // Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
-    // decrementing SVP instance counters for each discarded hit entry.
-    // Phase bit is required: without it, a VPQ wrap of a full vpq_size back
-    // to the saved position makes the position-only loop a no-op and the
-    // speculative instance++ increments are never undone.
-    // For branch misp: restored_* = saved at checkpoint time.
-    // For squash_complete: restored_* = current (vpq_head, vpq_head_phase).
+    // decrementing SVP instance counters for each discarded hit entry
+    // Both position AND phase are required — VPQ can wrap a full vpq_size back to the
+    // same position with the phase flipped, making a position-only check incorrect
     void repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase);
 
-    // vpq_free_entries(): called from rename2() for stall check
+    // Called from rename2() to check if VPQ has enough free entries for the rename bundle
     unsigned int vpq_free_entries();
 
-    // get_vpq_tail(): called from rename2() at checkpoint creation
-    // Save this alongside branch checkpoint so repair() can restore it on misp.
+    // Called from rename2() at branch checkpoint creation — save alongside branch_ID
     unsigned int get_vpq_tail();
+    bool         get_vpq_tail_phase();
 
-    // get_vpq_head(): called from squash.cc for squash_complete.
-    // After a full squash, repair() target is vpq_head (discard everything in flight).
+    // Called from squash.cc for squash_complete — repair target to discard all in-flight entries
     unsigned int get_vpq_head();
+    bool         get_vpq_head_phase();
 
-    // Phase-bit getters, paired with get_vpq_tail()/get_vpq_head().
-    // Required so callers can save/restore both position AND phase: a VPQ
-    // that has wrapped a full vpq_size can arrive back at the same position
-    // with the phase flipped, and repair() must know that.
-    bool get_vpq_tail_phase();
-    bool get_vpq_head_phase();
-
-    // print_storage(): end of simulation, SVP cost accounting
-    // bits/entry = tag + 64(stride) + 64(retired_value) + ceil(log2(vpq_size+1)) + ceil(log2(conf_max+1))
-    // VPQ excluded from budget per spec.
+    // Called at end of simulation — prints SVP storage cost accounting to stats log
+    // VPQ is excluded from the storage budget per spec
     void print_storage(FILE *out);
 };
 

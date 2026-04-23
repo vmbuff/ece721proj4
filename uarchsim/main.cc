@@ -389,17 +389,24 @@ static void set_vp_perf(const char *config) {
       fprintf(stderr, "Incorrect usage: --vp-perf=<enable>, where <enable> is 0 or 1 to disable or enable perfect value prediction, respectively.\n");
       exit(-1);
    }
+
+   // --vp-svp is mutually exclusive with --vp-perf
    if (enable && SVP_ENABLED) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
    }
+
    PERFECT_VALUE_PRED = (enable ? true : false);
 }
 
-// Project 4 - Value Prediction
-// Configures the Stride Value Predictor
+// Configure the Stride Value Predictor
 static void set_vp_svp(const char *config) {
-   uint64_t vpqsize, oracleconf, indexbits, tagbits, confmax;
+   // Hold parsed command line arguments for configuration values of SVP
+   uint64_t vpqsize;
+   uint64_t oracleconf;
+   uint64_t indexbits;
+   uint64_t tagbits;
+   uint64_t confmax;
 
    // --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>
    if (sscanf(config, "%lu,%lu,%lu,%lu,%lu",
@@ -415,11 +422,11 @@ static void set_vp_svp(const char *config) {
    }
 
    SVP_ENABLED     = true;
-   VPQ_SIZE        = (unsigned int)vpqsize;
+   VPQ_SIZE        = (unsigned int) vpqsize;
    SVP_ORACLE_CONF = (oracleconf ? true : false);
-   SVP_INDEX_BITS  = (unsigned int)indexbits;
-   SVP_TAG_BITS    = (unsigned int)tagbits;
-   SVP_CONF_MAX    = (unsigned int)confmax;
+   SVP_INDEX_BITS  = (unsigned int) indexbits;
+   SVP_TAG_BITS    = (unsigned int) tagbits;
+   SVP_CONF_MAX    = (unsigned int) confmax;
 }
 
 // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction

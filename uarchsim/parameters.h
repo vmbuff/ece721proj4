@@ -107,18 +107,19 @@ extern unsigned int IBP_BHR_LENGTH;
 extern bool ENABLE_TRACE_CACHE;
 
 // Project 4 - Value Prediction
-extern bool PERFECT_VALUE_PRED;     // If true, use perfect value prediction mode
-extern bool predINTALU;             // If true, instr. is INTALU type and eligible to be value predicted
-extern bool predFPALU;              // If true, instr. is FPALU type and eligible to be value predicted
-extern bool predLOAD;               // If true, instr. is a normal LOAD and eligible to be value predicted
+// Value prediction controls
+extern bool PERFECT_VALUE_PRED;         // If true, use perfect value prediction mode
+extern bool predINTALU;                 // If true, instr. is INTALU type and eligible to be value predicted
+extern bool predFPALU;                  // If true, instr. is FPALU type and eligible to be value predicted
+extern bool predLOAD;                   // If true, instr. is a LOAD and eligible to be value predicted
 
-// SVP configuration (Vince: move CLI parsing to main.cc, Task V5)
-extern bool SVP_ENABLED;            // True when --vp-svp is specified
-extern bool SVP_ORACLE_CONF;        // True = oracle confidence, False = real confidence
-extern unsigned int VPQ_SIZE;
-extern unsigned int SVP_INDEX_BITS;
-extern unsigned int SVP_TAG_BITS;
-extern unsigned int SVP_CONF_MAX;
+// SVP configuration
+extern bool SVP_ENABLED;                // If true, the Stride Value Predictor (SVP) is enabled
+extern bool SVP_ORACLE_CONF;            // If true, oracle confidence mode is enabled
+extern unsigned int VPQ_SIZE;           // Number of entries in the Value Prediction Queue (VPQ)
+extern unsigned int SVP_INDEX_BITS;     // Number of bits from the PC used to index into the SVP 
+extern unsigned int SVP_TAG_BITS;       // Number of bits used for the tag in the SVP  
+extern unsigned int SVP_CONF_MAX;       // Maximum confidence value for the SVP confidence counter 
 
 // Benchmark control.
 extern bool logging_on;

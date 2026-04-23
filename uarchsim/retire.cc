@@ -87,8 +87,7 @@ void pipeline_t::retire(size_t &instret) {
          // Train the SVP using the VPQ at retirement
          // Check if VPU exists and instruction was eligible for value prediction 
          if (VPU && PAY.buf[PAY.head].vp_eligible) {
-            // Temporary variable to hold committed value
-            uint64_t committed_val = 0;
+            uint64_t committed_val = 0;         // Temporary variable to hold committed value
 
             // If instruction has a valid destination register, hold committed value for training
             if (PAY.buf[PAY.head].C_valid)
