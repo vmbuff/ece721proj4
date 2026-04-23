@@ -404,6 +404,16 @@ public:
    uint64_t num_insn;
    double extra_wait_time_for_inum;
 
+   // Project 4 - Value Prediction measurement counters (kept outside
+   // the stats_t counter_map so they don't appear in the [stats] block).
+   uint64_t vpmeas_ineligible;
+   uint64_t vpmeas_eligible;
+   uint64_t vpmeas_miss;
+   uint64_t vpmeas_conf_corr;
+   uint64_t vpmeas_conf_incorr;
+   uint64_t vpmeas_unconf_corr;
+   uint64_t vpmeas_unconf_incorr;
+
    // Functions for pipeline stages.
    void fetch();
    void decode();

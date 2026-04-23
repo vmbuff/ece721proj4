@@ -31,6 +31,12 @@ vpu::vpu(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, 
    vpq_tail_phase = false;
 }
 
+// Destructor - frees dynamically allocated SVP table and VPQ buffer
+vpu::~vpu() {
+   delete[] svp;
+   delete[] vpq;
+}
+
 // This function extracts the SVP index bits from the PC
 unsigned int vpu::get_svp_index(uint64_t pc) {
    return (unsigned int)((pc >> 2) & ((1U << svp_index_bits) - 1));
@@ -65,7 +71,7 @@ bool vpu::tag_matches(unsigned int idx, uint64_t pc) {
 
 // Walks VPQ from head to tail counting in-flight entries that will decrement
 // instance at retirement. Only counts entries where svp_hit is true AND
-// the tag still matches — entries that fail either condition will not
+// the tag still matches - entries that fail either condition will not
 // decrement instance at train time and must not be counted here
 uint64_t vpu::count_inflight_instances(unsigned int svp_index) {
    uint64_t count = 0;
@@ -87,7 +93,7 @@ uint64_t vpu::count_inflight_instances(unsigned int svp_index) {
 // Returns number of free VPQ entries using phase-bit arithmetic (same pattern as renamer FL/AL)
 unsigned int vpu::vpq_free_entries() {
    if (vpq_head == vpq_tail) {
-      // Same position — same phase = empty, different phase = full
+      // Same position - same phase = empty, different phase = full
       return (vpq_head_phase == vpq_tail_phase) ? vpq_size : 0;
    }
    else if (vpq_tail > vpq_head) {
@@ -119,7 +125,7 @@ bool vpu::get_vpq_head_phase() {
    return vpq_head_phase; 
 }
 
-// Looks up SVP by PC — on hit, computes predicted value and confidence, increments instance
+// Looks up SVP by PC - on hit, computes predicted value and confidence, increments instance
 // Always allocates a VPQ entry (even on miss) for retirement training and squash repair
 // Returns true on SVP hit, false on miss
 bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index) {
@@ -127,7 +133,7 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
    bool hit = (svp[idx].valid && tag_matches(idx, pc));
 
    if (hit) {
-      // Increment instance before computing prediction — the first in-flight
+      // Increment instance before computing prediction - the first in-flight
       // copy should predict retired_value + stride, not retired_value + 0
       svp[idx].instance++;
 
@@ -136,7 +142,7 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
       out_confident = (svp[idx].conf >= svp_conf_max);
    }
 
-   // Always allocate a VPQ entry — misses become replacements at retirement,
+   // Always allocate a VPQ entry - misses become replacements at retirement,
    // and repair() must walk all entries on squash
    assert(vpq_free_entries() > 0);
    out_vpq_index = vpq_tail;
@@ -166,7 +172,7 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
    uint64_t pc = vpq[vpq_index].pc;
 
    if (svp[idx].valid && tag_matches(idx, pc)) {
-      // Tag match — update stride and confidence per spec:
+      // Tag match - update stride and confidence per spec:
       // new_stride = value - retired_value
       // if new_stride == stride: conf++ (saturate at conf_max)
       // else: stride = new_stride, conf = 0
@@ -183,7 +189,7 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
 
       svp[idx].retired_value = committed_val;
 
-      // Only decrement instance if this entry was an SVP hit at predict time —
+      // Only decrement instance if this entry was an SVP hit at predict time -
       // if it was a miss, no instance++ happened so no decrement is needed
       if (vpq[vpq_index].svp_hit) {
          assert(svp[idx].instance > 0);
@@ -191,7 +197,7 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
       }
    }
    else {
-      // Tag miss or invalid — replace entry per spec:
+      // Tag miss or invalid - replace entry per spec:
       // retired_value = stride = value, conf = 0, tag = PCtag
       svp[idx].tag           = get_svp_tag(pc);
       svp[idx].retired_value = committed_val;
@@ -218,7 +224,7 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
 
 // Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
 // decrementing SVP instance counters for each discarded hit entry
-// Both position AND phase are compared — VPQ can wrap a full vpq_size back to
+// Both position AND phase are compared - VPQ can wrap a full vpq_size back to
 // the same position with the phase flipped, making a position-only check incorrect
 void vpu::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
    while (vpq_tail != restored_vpq_tail || vpq_tail_phase != restored_vpq_tail_phase) {
@@ -226,7 +232,7 @@ void vpu::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
       if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
       else                 vpq_tail--;
 
-      // Only decrement instance if the tag still matches — if the SVP entry was
+      // Only decrement instance if the tag still matches - if the SVP entry was
       // replaced after this instruction's predict, decrementing would corrupt
       // the new entry's instance counter
       if (vpq[vpq_tail].svp_hit &&
