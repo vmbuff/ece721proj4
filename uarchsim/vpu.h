@@ -68,10 +68,7 @@ private:
 public:
     // Constructor - parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
     // oracleconf is handled externally in rename.cc and not stored here
-    vpu(unsigned int vpq_size,
-        unsigned int index_bits,
-        unsigned int tag_bits,
-        unsigned int conf_max);
+    vpu(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max);
     ~vpu();
     vpu(const vpu&) = delete;
     vpu& operator=(const vpu&) = delete;
@@ -80,10 +77,7 @@ public:
     // Looks up SVP by PC - on hit, computes predicted value and confidence, increments instance
     // Always allocates a VPQ entry (even on miss) for retirement training and squash repair
     // Returns true on SVP hit, false on miss
-    bool predict(uint64_t pc,
-                    uint64_t &out_predicted_val,
-                    bool &out_confident,
-                    unsigned int &out_vpq_index);
+    bool predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index);
 
     // Called from retire.cc per VP-eligible retired instruction
     // Trains SVP in program order using committed value from PRF

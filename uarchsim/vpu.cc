@@ -79,12 +79,14 @@ uint64_t vpu::count_inflight_instances(unsigned int svp_index) {
    bool phase = vpq_head_phase;
 
    while (!(pos == vpq_tail && phase == vpq_tail_phase)) {
-      if (vpq[pos].svp_index == svp_index &&
-          vpq[pos].svp_hit &&
-          tag_matches(svp_index, vpq[pos].pc))
+      if (vpq[pos].svp_index == svp_index && vpq[pos].svp_hit && tag_matches(svp_index, vpq[pos].pc)) {
          count++;
+      }
       pos++;
-      if (pos == vpq_size) { pos = 0; phase = !phase; }
+      if (pos == vpq_size) { 
+         pos = 0; 
+         phase = !phase; 
+      }
    }
    return count;
 }
@@ -137,8 +139,7 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
       // copy should predict retired_value + stride, not retired_value + 0
       svp[idx].instance++;
 
-      out_predicted_val = svp[idx].retired_value +
-                          (uint64_t)((int64_t)svp[idx].instance * svp[idx].stride);
+      out_predicted_val = svp[idx].retired_value + (uint64_t)((int64_t)svp[idx].instance * svp[idx].stride);
       out_confident = (svp[idx].conf >= svp_conf_max);
    }
 
@@ -155,7 +156,10 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
 
    // Advance tail
    vpq_tail++;
-   if (vpq_tail == vpq_size) { vpq_tail = 0; vpq_tail_phase = !vpq_tail_phase; }
+   if (vpq_tail == vpq_size) { 
+      vpq_tail = 0; 
+      vpq_tail_phase = !vpq_tail_phase; 
+   }
 
    return hit;
 }
@@ -179,8 +183,7 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
       int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
 
       if (new_stride == svp[idx].stride) {
-         if (svp[idx].conf < svp_conf_max)
-            svp[idx].conf++;
+         if (svp[idx].conf < svp_conf_max) svp[idx].conf++;
       }
       else {
          svp[idx].stride = new_stride;
@@ -209,8 +212,14 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
       // count_inflight_instances excludes it from the count
       unsigned int save_head  = vpq_head;
       bool         save_phase = vpq_head_phase;
+
       vpq_head++;
-      if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+
+      if (vpq_head == vpq_size) { 
+         vpq_head = 0; 
+         vpq_head_phase = !vpq_head_phase; 
+      }
+
       svp[idx].instance = count_inflight_instances(idx);
       vpq_head       = save_head;
       vpq_head_phase = save_phase;
@@ -218,7 +227,11 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
 
    // Free VPQ head
    vpq_head++;
-   if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+
+   if (vpq_head == vpq_size) { 
+      vpq_head = 0; 
+      vpq_head_phase = !vpq_head_phase; 
+   }
 }
 
 
@@ -228,15 +241,19 @@ void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
 // the same position with the phase flipped, making a position-only check incorrect
 void vpu::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
    while (vpq_tail != restored_vpq_tail || vpq_tail_phase != restored_vpq_tail_phase) {
+      
       // Step backward
-      if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
-      else                 vpq_tail--;
+      if (vpq_tail == 0) { 
+         vpq_tail = vpq_size - 1; 
+         vpq_tail_phase = !vpq_tail_phase; 
+      }
+
+      else vpq_tail--;
 
       // Only decrement instance if the tag still matches - if the SVP entry was
       // replaced after this instruction's predict, decrementing would corrupt
       // the new entry's instance counter
-      if (vpq[vpq_tail].svp_hit &&
-          tag_matches(vpq[vpq_tail].svp_index, vpq[vpq_tail].pc)) {
+      if (vpq[vpq_tail].svp_hit && tag_matches(vpq[vpq_tail].svp_index, vpq[vpq_tail].pc)) {
          assert(svp[vpq[vpq_tail].svp_index].instance > 0);
          svp[vpq[vpq_tail].svp_index].instance--;
       }
