@@ -243,12 +243,21 @@ pipeline_t::pipeline_t(
    REN = new renamer(NXPR + NFPR, prf_size, num_chkpts, rob_size);
 
    /////////////////////////////////////////////////////////////
-   // Value Prediction Unit (SVP + VPQ).
+   // Project 4 - Value Prediction
+   // Value Prediction Unit (SVP + VPQ)
    /////////////////////////////////////////////////////////////
+   // If svp is enabled, create new vpu using values from command line arguments
    if (SVP_ENABLED) {
       VPU = new vpu(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
+   // Otherwise, set VPU pointer to null
    } else {
       VPU = (vpu *) NULL;
+   }
+
+   // Initialize VPQ tail checkpoint arrays to safe defaults
+   for (int i = 0; i < 64; i++) {
+      vpq_tail_checkpoint[i]       = 0;
+      vpq_tail_checkpoint_phase[i] = false;
    }
 
    /////////////////////////////////////////////////////////////

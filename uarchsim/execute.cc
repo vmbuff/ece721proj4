@@ -75,6 +75,8 @@ void pipeline_t::execute(unsigned int lane_number) {
             // FIX_ME #13 BEGIN
             if (hit && PAY.buf[index].C_valid) {
                // Project 4 - Value Prediction
+               // If instruction was value predicted, suppress wakeup call
+               // Destination register was already marked ready at dispatch
                if(!PAY.buf[index].vp_pred) {
                   IQ.wakeup(PAY.buf[index].C_phys_reg, true);
                }
@@ -214,6 +216,8 @@ void pipeline_t::execute(unsigned int lane_number) {
          // FIX_ME #11b BEGIN
          if (PAY.buf[index].C_valid && !IS_LOAD(PAY.buf[index].flags) && !IS_AMO(PAY.buf[index].flags)) {
             // Project 4 - Value Prediction
+            // If instruction was value predicted, suppress wakeup call
+            // Destination register was already marked ready at dispatch
             if(!PAY.buf[index].vp_pred) {
                IQ.wakeup(PAY.buf[index].C_phys_reg, true);
             }
@@ -274,6 +278,8 @@ void pipeline_t::load_replay() {
 
          // FIX_ME #18a BEGIN
          // Project 4 - Value Prediction
+         // If instruction was value predicted, suppress wakeup call
+         // Destination register was already marked ready at dispatch
          if(!PAY.buf[index].vp_pred) {
             IQ.wakeup(PAY.buf[index].C_phys_reg, true);
          }

@@ -148,17 +148,27 @@ void pipeline_t::rename2() {
    // FIX_ME #2 END
 
    // Project 4 - Value Prediction
-   // VPQ stall condition: count VP-eligible instrs in the bundle,
-   // stall if VPQ doesn't have enough free entries for all of them.
+   // Stall Rename if VPQ doesn't have enough free entries for all VP-eligible instructions in the bundle
    if (VPU) {
-      unsigned int bundle_vp_eligible = 0;
+      unsigned int bundle_vp_eligible = 0;      // Holds number of vp eligibile instructions in the bundle
+
+      // Count VP-eligible instructions in the rename bundle
       for (unsigned int k = 0; k < dispatch_width; k++) {
-         if (!RENAME2[k].valid) break;
-         if (is_eligible(&PAY.buf[RENAME2[k].index]))
+         // Stop counting if end of the bundle is reached
+         if (!RENAME2[k].valid) {
+            break;
+         }
+
+         // Increment count if instruction is VP-eligible
+         if (is_eligible(&PAY.buf[RENAME2[k].index])) {
             bundle_vp_eligible++;
+         }
       }
-      if (VPU->vpq_free_entries() < bundle_vp_eligible)
+
+      // Stall if not enough free VPQ entries for the bundle
+      if (VPU->vpq_free_entries() < bundle_vp_eligible) {
          return;
+      }
    }
 
    //
@@ -229,10 +239,9 @@ void pipeline_t::rename2() {
       if(PAY.buf[index].checkpoint) {
          PAY.buf[index].branch_ID = REN->checkpoint();
 
-         // Project 4: save VPQ tail (position + phase) so squash.cc can
-         // repair() to this point on a branch misprediction. Indexed by
-         // branch_ID. Phase is required for correctness when the VPQ wraps
-         // a full vpq_size between now and the misprediction.
+         // Project 4 - Value Prediction
+         // Save VPQ tail position and phase bit for this branch checkpoint
+         // Both are needed to correctly restore the VPQ on misprediction
          if (VPU) {
             vpq_tail_checkpoint[PAY.buf[index].branch_ID]       = VPU->get_vpq_tail();
             vpq_tail_checkpoint_phase[PAY.buf[index].branch_ID] = VPU->get_vpq_tail_phase();
@@ -242,7 +251,7 @@ void pipeline_t::rename2() {
 
 
       // Project 4 - Value Prediction
-      // Initialize all VP payload fields to defaults
+      // Initialize all vp payload fields to defaults
       PAY.buf[index].vp_pred      = false;
       PAY.buf[index].vp_val       = 0;
       PAY.buf[index].vp_eligible  = false;
@@ -250,58 +259,58 @@ void pipeline_t::rename2() {
       PAY.buf[index].vp_confident = false;
       PAY.buf[index].vpq_index    = 0;
 
+      // Check if instruction is eligible for value prediction
       if (is_eligible(&PAY.buf[index])) {
          PAY.buf[index].vp_eligible = true;
 
+         // Perfect vp mode
          if (PERFECT_VALUE_PRED) {
-            // Perfect VP: use functional sim to get the exact correct value.
-            // good_instruction required here (only predict on-path instrs in oracle modes).
+            // Only predict on-path instructions 
             if (PAY.buf[index].good_instruction) {
                db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);
+
+               // If functional simulator has a valid destination value, inject it
                if (actual && actual->a_rdst[0].valid) {
                   PAY.buf[index].vp_pred = true;
+                  PAY.buf[index].vp_confident = true;
                   PAY.buf[index].vp_val  = actual->a_rdst[0].value;
                }
             }
-         }
-         else if (VPU) {
-            // Real SVP prediction
-            uint64_t predicted_val;
-            bool confident;
-            unsigned int vpq_idx;
+         // Real vp mode
+         } else if (VPU) {
+            uint64_t predicted_val;    // Predicted destination register value from SVP
+            bool confident;            // If true, SVP confidence reached conf_max
+            unsigned int vpq_idx;      // VPQ entry index allocated for this instruction
 
-            bool hit = VPU->predict(PAY.buf[index].pc, predicted_val,
-                                    confident, vpq_idx);
+            bool hit = VPU->predict(PAY.buf[index].pc, predicted_val, confident, vpq_idx);
 
             PAY.buf[index].vpq_index  = vpq_idx;
             PAY.buf[index].vp_svp_hit = hit;
 
+            // If SVP hit, store predicted value and confidence
             if (hit) {
-               // Always store predicted value (even unconfident) so retire can
-               // check correctness for all vpmeas stat categories.
+               // Store predicted value even if unconfident so retire can check correctness for vpmeas stats
                PAY.buf[index].vp_val = predicted_val;
 
+               // Oracle confidence mode, override SVP confidence with functional simulator result
                if (SVP_ORACLE_CONF) {
-                  // Oracle confidence: for on-path instrs, check prediction vs functional sim
-                  // value and override SVP conf with that result. For off-path instrs, we have
-                  // no ground truth to check, so fall back to SVP's own confidence counter.
-                  // (good_instruction is allowed here, oracle mode only.)
+                  // Only check on-path instructions, no ground truth for off-path instructions
                   if (PAY.buf[index].good_instruction) {
                      confident = false;
                      db_t *actual = get_pipe()->peek(PAY.buf[index].db_index);
-                     if (actual && actual->a_rdst[0].valid)
+
+                     // If functional simulator confirms prediction, mark as confident
+                     if (actual && actual->a_rdst[0].valid) {
                         confident = (predicted_val == actual->a_rdst[0].value);
+                     }
                   }
-                  // else: leave `confident` as the SVP's own result (conf >= conf_max)
                }
-               // IMPORTANT: in real confidence mode (not oracle), we do NOT touch
-               // good_instruction at all. Even wrong-path instrs get predicted.
-               // Spec deducts points if good_instruction appears in the real conf path.
 
                PAY.buf[index].vp_confident = confident;
+
+               // If confident, inject prediction into PRF at Dispatch
                if (confident) {
                   PAY.buf[index].vp_pred = true;
-                  // vp_val already set above
                }
             }
          }
