@@ -44,13 +44,18 @@ unsigned int vpu::get_svp_index(uint64_t pc) {
 
 // This function extracts the SVP tag bits from the PC
 uint64_t vpu::get_svp_tag(uint64_t pc) {
+   uint64_t tag;
+
    // If there are no tag bits, return 0 (all entries match)
    if (svp_tag_bits == 0) {
-      return 0;
+      tag = 0;
+   }
+   else {
+      // If there are tag bits, extract them from the PC after the index bits
+      tag = (pc >> (2 + svp_index_bits)) & ((1ULL << svp_tag_bits) - 1);
    }
 
-   // If there are tag bits, extract them from the PC after the index bits
-   return (pc >> (2 + svp_index_bits)) & ((1ULL << svp_tag_bits) - 1);
+   return tag;
 }
 
 // This function returns true if no tags are used or the stored tag matches the PC tag
@@ -96,7 +101,12 @@ uint64_t vpu::count_inflight_instances(unsigned int svp_index) {
 unsigned int vpu::vpq_free_entries() {
    if (vpq_head == vpq_tail) {
       // Same position - same phase = empty, different phase = full
-      return (vpq_head_phase == vpq_tail_phase) ? vpq_size : 0;
+      if (vpq_head_phase == vpq_tail_phase) {
+         return vpq_size;
+      }
+      else {
+         return 0;
+      }
    }
    else if (vpq_tail > vpq_head) {
       return vpq_size - (vpq_tail - vpq_head);
@@ -132,7 +142,17 @@ bool vpu::get_vpq_head_phase() {
 // Returns true on SVP hit, false on miss
 bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index) {
    unsigned int idx = get_svp_index(pc);
-   bool hit = (svp[idx].valid && tag_matches(idx, pc));
+   // When tag_bits == 0 the SVP has no tag storage and every access to an
+   // index is a "hit". Cold accesses read retired_value=stride=0, which
+   // yields an unconfident zero prediction that retire will score as
+   // unconf_corr/incorr - not a miss. Only when tag_bits > 0 can we have
+   // a genuine tag miss (invalid entry or tag mismatch).
+   bool hit;
+   if (svp_tag_bits == 0) {
+      hit = true;
+   } else {
+      hit = svp[idx].valid && tag_matches(idx, pc);
+   }
 
    if (hit) {
       // Increment instance before computing prediction - the first in-flight
@@ -148,11 +168,17 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
    assert(vpq_free_entries() > 0);
    out_vpq_index = vpq_tail;
 
-   vpq[vpq_tail].pc              = pc;
-   vpq[vpq_tail].svp_index       = idx;
-   vpq[vpq_tail].predicted_value = hit ? out_predicted_val : 0;
-   vpq[vpq_tail].svp_hit         = hit;
-   vpq[vpq_tail].confident       = hit ? out_confident : false;
+   vpq[vpq_tail].pc        = pc;
+   vpq[vpq_tail].svp_index = idx;
+   vpq[vpq_tail].svp_hit   = hit;
+   if (hit) {
+      vpq[vpq_tail].predicted_value = out_predicted_val;
+      vpq[vpq_tail].confident       = out_confident;
+   }
+   else {
+      vpq[vpq_tail].predicted_value = 0;
+      vpq[vpq_tail].confident       = false;
+   }
 
    // Advance tail
    vpq_tail++;
@@ -264,8 +290,15 @@ void vpu::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
 // Computes and prints SVP storage cost accounting to the stats log
 // VPQ is excluded from the storage budget per spec
 void vpu::print_storage(FILE *out) {
-   unsigned int instance_bits = (vpq_size > 0)    ? (unsigned int)ceil(log2((double)(vpq_size + 1)))    : 1;
-   unsigned int conf_bits     = (svp_conf_max > 0) ? (unsigned int)ceil(log2((double)(svp_conf_max + 1))) : 1;
+   unsigned int instance_bits;
+   if (vpq_size > 0) {
+      instance_bits = (unsigned int)ceil(log2((double)vpq_size));
+   }
+   else {
+      instance_bits = 1;
+   }
+
+   unsigned int conf_bits      = (unsigned int)ceil(log2((double)(svp_conf_max + 1)));
    unsigned int bits_per_entry = svp_tag_bits + conf_bits + 64 + 64 + instance_bits;
    unsigned int total_bits     = svp_num_entries * bits_per_entry;
    double total_bytes          = total_bits / 8.0;
