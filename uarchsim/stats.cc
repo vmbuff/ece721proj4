@@ -12,10 +12,6 @@ stats_t::stats_t(pipeline_t *_proc) {
    DECLARE_COUNTER(this, exception_count, proc);
    DECLARE_COUNTER(this, split_count, proc);
 
-   // Project 4 - Value Prediction counters are tracked as plain members
-   // of pipeline_t (see pipeline.h) so they stay out of the [stats] block.
-
-
 #if 0
   DECLARE_COUNTER(this, load_count                ,proc);
   DECLARE_COUNTER(this, store_count               ,proc);

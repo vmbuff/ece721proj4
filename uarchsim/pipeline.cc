@@ -90,7 +90,7 @@ pipeline_t::pipeline_t(
    // Initialize extra wait time for inum.
    extra_wait_time_for_inum = 0;
 
-   // Project 4 - Value Prediction measurement counters.
+   // Value Prediction measurement counters.
    vpmeas_ineligible    = 0;
    vpmeas_eligible      = 0;
    vpmeas_miss          = 0;
