@@ -83,13 +83,46 @@ void pipeline_t::retire(size_t &instret) {
          REN->commit();
          // FIX_ME #17b END
 
-         // Project 4 - VP: Train SVP via VPQ at retirement (V2 stub, Vince to finalize).
-         // Must happen before any squash_complete() below, which calls VPU->repair().
+         // Project 4 - Value Prediction
+         // Train the SVP using the VPQ at retirement
+         // Check if VPU exists and instruction was eligible for value prediction 
          if (VPU && PAY.buf[PAY.head].vp_eligible) {
+            // Temporary variable to hold committed value
             uint64_t committed_val = 0;
+
+            // If instruction has a valid destination register, hold committed value for training
             if (PAY.buf[PAY.head].C_valid)
                committed_val = REN->read(PAY.buf[PAY.head].C_phys_reg);
+
+            // Train the VPU using this committed value
             VPU->train(PAY.buf[PAY.head].vpq_index, committed_val);
+         }
+
+         // Update value prediction statistics at retirement
+         // Check if instruction was eligible for value prediction
+         if (!PAY.buf[PAY.head].vp_eligible) {
+            inc_counter(vpmeas_ineligible);              // Instruction NOT eligible for value prediction
+         } else {
+            inc_counter(vpmeas_eligible);                // Instruction eligible for value prediction
+
+            // Check if instruction had value prediction available
+            if (!PAY.buf[PAY.head].vp_svp_hit && !PERFECT_VALUE_PRED) {
+               inc_counter(vpmeas_miss);                 // Instruction had NO value prediction available (SVP miss)
+
+            // Check if instruction was value predicted with confidence
+            } else if (PAY.buf[PAY.head].vp_confident) {
+               if (PAY.buf[PAY.head].C_value.dw == PAY.buf[PAY.head].vp_val)
+                  inc_counter(vpmeas_conf_corr);         // Instruction value predicted correctly with confidence         
+               else
+                  inc_counter(vpmeas_conf_incorr);       // Instruction value predicted incorrectly with confidence
+            
+            // Check if instruction was value predicted without confidence
+            } else {
+               if (PAY.buf[PAY.head].C_value.dw == PAY.buf[PAY.head].vp_val)
+                  inc_counter(vpmeas_unconf_corr);       // Instruction value predicted correctly without confidence
+               else
+                  inc_counter(vpmeas_unconf_incorr);     // Instruction value predicted incorrectly without confidence
+            }
          }
 
          // If the committed instruction is a load or store, signal the LSU to commit its oldest load or store, respectively.
@@ -197,6 +230,9 @@ void pipeline_t::retire(size_t &instret) {
          }
 
          // Full squash, including the mispredicted load, and restart fetching from the load.
+         // The violated load's speculative svp[].instance++ is undone by
+         // squash_complete() -> VPU->repair(vpq_head, vpq_head_phase), which
+         // walks tail back to head inclusive of the head entry itself.
          squash_complete(offending_PC);
          inc_counter(recovery_count);
          inc_counter(ld_vio_count);

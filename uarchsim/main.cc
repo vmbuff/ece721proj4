@@ -397,17 +397,18 @@ static void set_vp_perf(const char *config) {
 }
 
 // Project 4 - Value Prediction
-// --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>
-// Configures the Stride Value Predictor. Mutually exclusive with --vp-perf.
+// Configures the Stride Value Predictor
 static void set_vp_svp(const char *config) {
    uint64_t vpqsize, oracleconf, indexbits, tagbits, confmax;
 
+   // --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>
    if (sscanf(config, "%lu,%lu,%lu,%lu,%lu",
               &vpqsize, &oracleconf, &indexbits, &tagbits, &confmax) != 5) {
       fprintf(stderr, "Incorrect usage: --vp-svp=<VPQsize>,<oracleconf>,<indexbits>,<tagbits>,<confmax>\n");
       exit(-1);
    }
 
+   // --vp-svp is mutually exclusive with --vp-perf
    if (PERFECT_VALUE_PRED) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
@@ -488,12 +489,12 @@ int main(int argc, char **argv) {
    parser.option(0, "cp", 1, [&](const char *s) { NUM_CHECKPOINTS = atoi(s); });
 
    // Project 4 - Value Prediction
-   // Add command line options for value prediction configuration
+   // Command line options for value prediction configuration
    // --vp-perf to specify whether perfect value prediction is enabled or not
    parser.option(0, "vp-perf", 1, [&](const char *s) { set_vp_perf(s); });
-   // --vp-svp to configure the Stride Value Predictor (VPQsize,oracleconf,indexbits,tagbits,confmax)
+   // --vp-svp to configure the Stride Value Predictor (VPQsize, oracleconf, # index bits, # tag bits, confmax)
    parser.option(0, "vp-svp", 1, [&](const char *s) { set_vp_svp(s); });
-   // --vp-eligible to specify which instruction types are eligible for value prediction (integer ALU, floating-point ALU, and/or load instructions)
+   // --vp-eligible to specify which instruction types are eligible for value prediction (predINTALU, predFPALU, predLOAD)
    parser.option(0, "vp-eligible", 1, [&](const char *s) { set_vp_eligible(s); });
 
    parser.option(0, "bq", 1, [&](const char *s) {BQ_SIZE = atoi(s); AUTO_BQ_SIZE = false; });
