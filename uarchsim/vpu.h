@@ -13,7 +13,7 @@ private:
     // SVP entry
     // Prediction formula: retired_value + instance * stride
     // Instance is speculatively incremented at Rename and decremented at retirement
-    // conf is a saturating counter — prediction is only injected when conf == conf_max
+    // conf is a saturating counter - prediction is only injected when conf == conf_max
     struct svp_entry_t {
         uint64_t     tag;
         int64_t      stride;            // Signed per spec
@@ -62,20 +62,22 @@ private:
     bool tag_matches(unsigned int idx, uint64_t pc);
 
     // Walks VPQ from head to tail counting in-flight entries that will decrement
-    // instance at retirement — only counts hit entries whose tag still matches
+    // instance at retirement - only counts hit entries whose tag still matches
     uint64_t count_inflight_instances(unsigned int svp_index);
 
 public:
-    // Constructor — parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
+    // Constructor - parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
     // oracleconf is handled externally in rename.cc and not stored here
     vpu(unsigned int vpq_size,
         unsigned int index_bits,
         unsigned int tag_bits,
         unsigned int conf_max);
     ~vpu();
+    vpu(const vpu&) = delete;
+    vpu& operator=(const vpu&) = delete;
 
     // Called from rename2() per VP-eligible instruction
-    // Looks up SVP by PC — on hit, computes predicted value and confidence, increments instance
+    // Looks up SVP by PC - on hit, computes predicted value and confidence, increments instance
     // Always allocates a VPQ entry (even on miss) for retirement training and squash repair
     // Returns true on SVP hit, false on miss
     bool predict(uint64_t pc,
@@ -93,22 +95,22 @@ public:
     // Called from squash.cc on any pipeline squash
     // Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
     // decrementing SVP instance counters for each discarded hit entry
-    // Both position AND phase are required — VPQ can wrap a full vpq_size back to the
+    // Both position AND phase are required - VPQ can wrap a full vpq_size back to the
     // same position with the phase flipped, making a position-only check incorrect
     void repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase);
 
     // Called from rename2() to check if VPQ has enough free entries for the rename bundle
     unsigned int vpq_free_entries();
 
-    // Called from rename2() at branch checkpoint creation — save alongside branch_ID
+    // Called from rename2() at branch checkpoint creation - save alongside branch_ID
     unsigned int get_vpq_tail();
     bool         get_vpq_tail_phase();
 
-    // Called from squash.cc for squash_complete — repair target to discard all in-flight entries
+    // Called from squash.cc for squash_complete - repair target to discard all in-flight entries
     unsigned int get_vpq_head();
     bool         get_vpq_head_phase();
 
-    // Called at end of simulation — prints SVP storage cost accounting to stats log
+    // Called at end of simulation - prints SVP storage cost accounting to stats log
     // VPQ is excluded from the storage budget per spec
     void print_storage(FILE *out);
 };
