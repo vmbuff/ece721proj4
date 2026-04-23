@@ -141,18 +141,19 @@ unsigned int IBP_BHR_LENGTH = 16;
 bool ENABLE_TRACE_CACHE = false;
 
 // Project 4 - Value Prediction
-bool PERFECT_VALUE_PRED = false;
-bool predINTALU = false;
-bool predFPALU = false;
-bool predLOAD = false;
+// Value prediction controls
+bool PERFECT_VALUE_PRED = false;       
+bool predINTALU = false;               
+bool predFPALU = false;                
+bool predLOAD = false;                 
 
-// SVP configuration (overridden by --vp-svp CLI)
-bool SVP_ENABLED = false;
-bool SVP_ORACLE_CONF = false;
-unsigned int VPQ_SIZE = 256;
-unsigned int SVP_INDEX_BITS = 10;
+// SVP configuration
+bool SVP_ENABLED = false;              
+bool SVP_ORACLE_CONF = false;          
+unsigned int VPQ_SIZE = 0;           
+unsigned int SVP_INDEX_BITS = 0;
 unsigned int SVP_TAG_BITS = 0;
-unsigned int SVP_CONF_MAX = 7;
+unsigned int SVP_CONF_MAX = 0;
 
 // Benchmark control.
 bool logging_on = false;

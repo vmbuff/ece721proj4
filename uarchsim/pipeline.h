@@ -358,20 +358,13 @@ private:
    lsu LSU;
 
    /////////////////////////////////////////////////////////////
+   // Project 4 - Value Prediction
    // Value Prediction Unit (SVP + VPQ).
-   // Instantiated in pipeline.cc when SVP_ENABLED is true.
    /////////////////////////////////////////////////////////////
-   vpu_t *VPU;
-
-   // VPQ tail snapshots for branch checkpoint recovery.
-   // Indexed by branch_ID. Saved when a checkpoint is created in rename2,
-   // used by repair() in squash.cc when a branch mispredicts.
-   // 64 entries = max unresolved branches (matches GBM width).
-   // Both position AND phase are saved: position alone is insufficient
-   // because the VPQ can wrap a full vpq_size between checkpoint and
-   // mispredict-resolve, arriving at the same position with phase flipped.
-   unsigned int vpq_tail_chkpt[64];
-   bool         vpq_tail_chkpt_phase[64];
+   vpu *VPU;
+   unsigned int vpq_tail_checkpoint[64];        // VPQ tail position for each branch checkpoint, indexed by branch_ID
+   bool         vpq_tail_checkpoint_phase[64];  // VPQ tail phase bit for each branch checkpoint, needed with position
+                                                // incase VPU wraps around to distinguish between empty and full
 
    /////////////////////////////////////////////////////////////
    // Unified L2 and L3 caches.
@@ -429,7 +422,7 @@ public:
    void set_value_misprediction(unsigned int al_index);
 
    // Project 4 - Value Prediction
-   // Define value-prediction eligibility function
+   // Declare value-prediction eligibility function
    bool is_eligible(payload_t *pay);
 
    //TODO: Implement these functions

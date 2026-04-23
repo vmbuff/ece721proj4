@@ -246,10 +246,9 @@ pipeline_t::pipeline_t(
    // Value Prediction Unit (SVP + VPQ).
    /////////////////////////////////////////////////////////////
    if (SVP_ENABLED) {
-      VPU = new vpu_t(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
-   }
-   else {
-      VPU = (vpu_t *) NULL;
+      VPU = new vpu(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
+   } else {
+      VPU = (vpu *) NULL;
    }
 
    /////////////////////////////////////////////////////////////

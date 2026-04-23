@@ -157,6 +157,6 @@ void pipeline_t::resolve(unsigned int branch_ID, bool correct) {
       // Project 4 - VP: repair VPQ back to the (tail, tail_phase) saved
       // at this branch's checkpoint.
       if (VPU)
-         VPU->repair(vpq_tail_chkpt[branch_ID], vpq_tail_chkpt_phase[branch_ID]);
+         VPU->repair(vpq_tail_checkpoint[branch_ID], vpq_tail_checkpoint_phase[branch_ID]);
    }
 }

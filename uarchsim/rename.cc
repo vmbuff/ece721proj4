@@ -234,8 +234,8 @@ void pipeline_t::rename2() {
          // branch_ID. Phase is required for correctness when the VPQ wraps
          // a full vpq_size between now and the misprediction.
          if (VPU) {
-            vpq_tail_chkpt[PAY.buf[index].branch_ID]       = VPU->get_vpq_tail();
-            vpq_tail_chkpt_phase[PAY.buf[index].branch_ID] = VPU->get_vpq_tail_phase();
+            vpq_tail_checkpoint[PAY.buf[index].branch_ID]       = VPU->get_vpq_tail();
+            vpq_tail_checkpoint_phase[PAY.buf[index].branch_ID] = VPU->get_vpq_tail_phase();
          }
       }
       // FIX_ME #5 END

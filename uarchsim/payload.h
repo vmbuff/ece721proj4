@@ -186,14 +186,12 @@ typedef struct {
 
 
    // Project 4 - Value Prediction
-   uint64_t vp_val;        // Predicted value. Set on any SVP hit (even unconfident) so
-                           // retire can check correctness for stats. Only injected into
-                           // PRF at dispatch when vp_pred is true.
-   bool vp_pred;           // True = prediction was confident and injected (breaks data deps).
-   bool vp_eligible;       // True = instruction was VP-eligible (for vpmeas stats).
-   bool vp_svp_hit;        // True = SVP had a valid tag-matching entry (hit vs miss).
-   bool vp_confident;      // True = SVP confidence was at max (or oracle said correct).
-   unsigned int vpq_index; // VPQ entry allocated at rename. Used at retire for training.
+   uint64_t vp_val;        // Predicted destination register value, set on any SVP hit (even unconfident)
+   bool vp_pred;           // If true, prediction was confident and injected into PRF at Dispatch
+   bool vp_eligible;       // If true, instruction is eligible for value prediction
+   bool vp_svp_hit;        // If true, SVP had a valid tag-matching entry for this instruction's PC
+   bool vp_confident;      // If true, SVP confidence reached conf_max (or oracle confirmed correct)
+   unsigned int vpq_index; // Index of the VPQ entry allocated for this instruction at Rename
 
 
    ////////////////////////

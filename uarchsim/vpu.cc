@@ -1,19 +1,18 @@
+// Project 4 - Value Prediction
 #include "vpu.h"
 #include <cassert>
 #include <cmath>
 
-vpu_t::vpu_t(unsigned int vpq_size,
-             unsigned int index_bits,
-             unsigned int tag_bits,
-             unsigned int conf_max) {
-
+// Constructor
+vpu::vpu(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max) {
+   // Store configuration parameters and compute derived values
    this->svp_index_bits  = index_bits;
    this->svp_tag_bits    = tag_bits;
    this->svp_conf_max    = conf_max;
    this->svp_num_entries = (1U << index_bits);
    this->vpq_size        = vpq_size;
 
-   // SVP table: all entries start invalid
+   // SVP table, all entries start invalid
    svp = new svp_entry_t[svp_num_entries];
    for (unsigned int i = 0; i < svp_num_entries; i++) {
       svp[i].tag           = 0;
@@ -24,7 +23,7 @@ vpu_t::vpu_t(unsigned int vpq_size,
       svp[i].valid         = false;
    }
 
-   // VPQ: empty (head == tail, same phase)
+   // VPQ, starts empty (head == tail, same phase)
    vpq = new vpq_entry_t[vpq_size];
    vpq_head       = 0;
    vpq_head_phase = false;
@@ -32,47 +31,43 @@ vpu_t::vpu_t(unsigned int vpq_size,
    vpq_tail_phase = false;
 }
 
-vpu_t::~vpu_t() {
-   delete[] svp;
-   delete[] vpq;
-}
-
-
-//
-// Helpers
-//
-
-// PC layout per spec (proj4-vp-v1.pdf page 2):
-//   PC: 00 | PCindex | PCtag | ...
-//   bits 0,1 are "00" (4-byte-aligned RV instructions); PCindex starts at bit 2.
-// Using >>1 instead of >>2 halves the effective slot count because bit 1 is
-// always 0 and folds into the index -- only even slots get used, doubling
-// aliasing. This had no visible effect on VAL-5/6 (1024 slots, plenty of
-// capacity) but doubled miss rate on VAL-7 (128 slots, capacity-bound).
-unsigned int vpu_t::get_svp_index(uint64_t pc) {
+// This function extracts the SVP index bits from the PC
+unsigned int vpu::get_svp_index(uint64_t pc) {
    return (unsigned int)((pc >> 2) & ((1U << svp_index_bits) - 1));
 }
 
-uint64_t vpu_t::get_svp_tag(uint64_t pc) {
-   if (svp_tag_bits == 0) return 0;
+// This function extracts the SVP tag bits from the PC
+uint64_t vpu::get_svp_tag(uint64_t pc) {
+   // If there are no tag bits, return 0 (all entries match)
+   if (svp_tag_bits == 0) {
+      return 0;
+   }
+
+   // If there are tag bits, extract them from the PC after the index bits
    return (pc >> (2 + svp_index_bits)) & ((1ULL << svp_tag_bits) - 1);
 }
 
-bool vpu_t::tag_matches(unsigned int idx, uint64_t pc) {
-   if (svp_tag_bits == 0) return true;       // no tags = always matches
-   if (!svp[idx].valid) return false;
+// This function returns true if no tags are used or the stored tag matches the PC tag
+bool vpu::tag_matches(unsigned int idx, uint64_t pc) {
+   // If there are no tag bits, return true (all entries match)
+   if (svp_tag_bits == 0) {
+      return true;
+   }
+
+   // If the entry is not valid, return false (no match)
+   if (!svp[idx].valid) { 
+      return false;
+   }
+
+   // Otherwise, return the result of the tag comparison
    return (svp[idx].tag == get_svp_tag(pc));
 }
 
-// Walk VPQ head to tail counting entries that will actually contribute a
-// future decrement to svp[svp_index].instance. An entry qualifies iff:
-//   (a) svp_hit=true at predict time (the entry actually did instance++), AND
-//   (b) its PC tag matches the CURRENT svp[svp_index].tag (the entry will
-//       hit the tag-match decrement path at train, not the tag-miss replace).
-// Counting entries that fail (a) or (b) creates "phantom" instance increments
-// that are never decremented -- causing instance drift, confidently wrong
-// predictions whose stride remains correct, and persistent conf_incorr.
-uint64_t vpu_t::count_inflight_instances(unsigned int svp_index) {
+// Walks VPQ from head to tail counting in-flight entries that will decrement
+// instance at retirement. Only counts entries where svp_hit is true AND
+// the tag still matches — entries that fail either condition will not
+// decrement instance at train time and must not be counted here
+uint64_t vpu::count_inflight_instances(unsigned int svp_index) {
    uint64_t count = 0;
    unsigned int pos = vpq_head;
    bool phase = vpq_head_phase;
@@ -89,13 +84,10 @@ uint64_t vpu_t::count_inflight_instances(unsigned int svp_index) {
 }
 
 
-//
-// VPQ free entry count (phase-bit logic, same pattern as renamer FL/AL)
-//
-
-unsigned int vpu_t::vpq_free_entries() {
+// Returns number of free VPQ entries using phase-bit arithmetic (same pattern as renamer FL/AL)
+unsigned int vpu::vpq_free_entries() {
    if (vpq_head == vpq_tail) {
-      // Same position: same phase = empty (all free), different phase = full (none free)
+      // Same position — same phase = empty, different phase = full
       return (vpq_head_phase == vpq_tail_phase) ? vpq_size : 0;
    }
    else if (vpq_tail > vpq_head) {
@@ -106,39 +98,37 @@ unsigned int vpu_t::vpq_free_entries() {
    }
 }
 
-unsigned int vpu_t::get_vpq_tail() {
-   return vpq_tail;
+// Getter functions
+// Returns current VPQ tail position
+unsigned int vpu::get_vpq_tail() { 
+   return vpq_tail; 
 }
 
-unsigned int vpu_t::get_vpq_head() {
-   return vpq_head;
+// Returns current VPQ head position
+unsigned int vpu::get_vpq_head() { 
+   return vpq_head; 
 }
 
-bool vpu_t::get_vpq_tail_phase() {
-   return vpq_tail_phase;
+// Returns current VPQ tail phase
+bool vpu::get_vpq_tail_phase() { 
+   return vpq_tail_phase; 
 }
 
-bool vpu_t::get_vpq_head_phase() {
-   return vpq_head_phase;
+// Returns current VPQ head phase
+bool vpu::get_vpq_head_phase() { 
+   return vpq_head_phase; 
 }
 
-
-//
-// predict(): called from rename2() per VP-eligible instruction
-//
-
-bool vpu_t::predict(uint64_t pc,
-                    uint64_t &out_predicted_val,
-                    bool &out_confident,
-                    unsigned int &out_vpq_index) {
-
+// Looks up SVP by PC — on hit, computes predicted value and confidence, increments instance
+// Always allocates a VPQ entry (even on miss) for retirement training and squash repair
+// Returns true on SVP hit, false on miss
+bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index) {
    unsigned int idx = get_svp_index(pc);
    bool hit = (svp[idx].valid && tag_matches(idx, pc));
 
    if (hit) {
-      // Increment BEFORE computing prediction so this in-flight instance
-      // predicts the next value (retired_value + stride), not the last-committed
-      // value (retired_value + 0).
+      // Increment instance before computing prediction — the first in-flight
+      // copy should predict retired_value + stride, not retired_value + 0
       svp[idx].instance++;
 
       out_predicted_val = svp[idx].retired_value +
@@ -146,9 +136,8 @@ bool vpu_t::predict(uint64_t pc,
       out_confident = (svp[idx].conf >= svp_conf_max);
    }
 
-   // Always allocate a VPQ entry, even on miss.
-   // Misses still need training at retire (they become replacements in the SVP),
-   // and repair() needs to walk all entries on squash.
+   // Always allocate a VPQ entry — misses become replacements at retirement,
+   // and repair() must walk all entries on squash
    assert(vpq_free_entries() > 0);
    out_vpq_index = vpq_tail;
 
@@ -166,26 +155,21 @@ bool vpu_t::predict(uint64_t pc,
 }
 
 
-//
-// train(): called from retire.cc per VP-eligible retired instruction
-//
-
-void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
-   // Should be training the head entry (in-order retirement)
-   assert(vpq_index == vpq_head);
+// Trains SVP in program order using committed value from PRF
+// Tag match: updates stride, conf, retired_value, decrements instance (if svp_hit)
+// Tag miss: replaces SVP entry and initializes instance by counting in-flight peers in VPQ
+// Frees VPQ head entry after training
+void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
+   assert(vpq_index == vpq_head); // Must always train the head entry (in-order retirement)
 
    unsigned int idx = vpq[vpq_index].svp_index;
    uint64_t pc = vpq[vpq_index].pc;
 
    if (svp[idx].valid && tag_matches(idx, pc)) {
-      // Tag match: train the existing entry per spec (page 2):
-      //   new_stride = (value - retired_value)
-      //   if (new_stride == stride) {conf += 1 (saturate)} else {stride = new_stride; conf = 0;}
-      //   retired_value = value
-      //   instance -= 1
-      // The instance decrement is skipped for svp_hit=false entries: no
-      // predict-time ++ happened for them (svp was replaced between predict
-      // and train back to a tag matching this entry's PC).
+      // Tag match — update stride and confidence per spec:
+      // new_stride = value - retired_value
+      // if new_stride == stride: conf++ (saturate at conf_max)
+      // else: stride = new_stride, conf = 0
       int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
 
       if (new_stride == svp[idx].stride) {
@@ -199,31 +183,30 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
 
       svp[idx].retired_value = committed_val;
 
+      // Only decrement instance if this entry was an SVP hit at predict time —
+      // if it was a miss, no instance++ happened so no decrement is needed
       if (vpq[vpq_index].svp_hit) {
          assert(svp[idx].instance > 0);
          svp[idx].instance--;
       }
    }
    else {
-      // Tag miss or invalid: replace the entry (spec page 2, unconditional).
-      //   tag = PCtag
-      //   conf = 0
-      //   retired_value = stride = value
-      //   instance = {walk VPQ H to T to determine}
+      // Tag miss or invalid — replace entry per spec:
+      // retired_value = stride = value, conf = 0, tag = PCtag
       svp[idx].tag           = get_svp_tag(pc);
       svp[idx].retired_value = committed_val;
       svp[idx].stride        = (int64_t)committed_val;
       svp[idx].conf          = 0;
       svp[idx].valid         = true;
 
-      // Temporarily advance head past the entry we're about to free so
-      // count_inflight_instances excludes it.
-      unsigned int save_head = vpq_head;
-      bool save_phase = vpq_head_phase;
+      // Temporarily advance head past the entry being freed so
+      // count_inflight_instances excludes it from the count
+      unsigned int save_head  = vpq_head;
+      bool         save_phase = vpq_head_phase;
       vpq_head++;
       if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
       svp[idx].instance = count_inflight_instances(idx);
-      vpq_head = save_head;
+      vpq_head       = save_head;
       vpq_head_phase = save_phase;
    }
 
@@ -233,27 +216,19 @@ void vpu_t::train(unsigned int vpq_index, uint64_t committed_val) {
 }
 
 
-//
-// repair(): called from squash.cc on any pipeline squash
-//
-
-void vpu_t::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
-   // Walk backward from current (tail, tail_phase) to (restored, restored_phase),
-   // undoing speculative instance increments for each discarded hit entry.
-   // Comparing both position AND phase is required: in long branch-resolution
-   // windows the VPQ can wrap a full vpq_size back to the same position with
-   // phase flipped; position-only would make this a no-op.
+// Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
+// decrementing SVP instance counters for each discarded hit entry
+// Both position AND phase are compared — VPQ can wrap a full vpq_size back to
+// the same position with the phase flipped, making a position-only check incorrect
+void vpu::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
    while (vpq_tail != restored_vpq_tail || vpq_tail_phase != restored_vpq_tail_phase) {
       // Step backward
       if (vpq_tail == 0) { vpq_tail = vpq_size - 1; vpq_tail_phase = !vpq_tail_phase; }
       else                 vpq_tail--;
 
-      // Undo the instance increment that predict() did for this entry.
-      // Only decrement if the entry's PC tag STILL matches the current
-      // svp tag -- if svp[idx] has been replaced since this entry's
-      // predict, the ++ went to a tag that no longer exists; decrementing
-      // the new tag's instance is erroneous (it makes the new tag's
-      // instance negative / under-counts).
+      // Only decrement instance if the tag still matches — if the SVP entry was
+      // replaced after this instruction's predict, decrementing would corrupt
+      // the new entry's instance counter
       if (vpq[vpq_tail].svp_hit &&
           tag_matches(vpq[vpq_tail].svp_index, vpq[vpq_tail].pc)) {
          assert(svp[vpq[vpq_tail].svp_index].instance > 0);
@@ -263,17 +238,15 @@ void vpu_t::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase)
 }
 
 
-//
-// print_storage(): SVP cost accounting (VPQ excluded per spec)
-//
-
-void vpu_t::print_storage(FILE *out) {
-   unsigned int instance_bits = (vpq_size > 0) ? (unsigned int)ceil(log2((double)(vpq_size + 1))) : 1;
-   unsigned int conf_bits = (svp_conf_max > 0) ? (unsigned int)ceil(log2((double)(svp_conf_max + 1))) : 1;
+// Computes and prints SVP storage cost accounting to the stats log
+// VPQ is excluded from the storage budget per spec
+void vpu::print_storage(FILE *out) {
+   unsigned int instance_bits = (vpq_size > 0)    ? (unsigned int)ceil(log2((double)(vpq_size + 1)))    : 1;
+   unsigned int conf_bits     = (svp_conf_max > 0) ? (unsigned int)ceil(log2((double)(svp_conf_max + 1))) : 1;
    unsigned int bits_per_entry = svp_tag_bits + conf_bits + 64 + 64 + instance_bits;
-   unsigned int total_bits = svp_num_entries * bits_per_entry;
-   double total_bytes = total_bits / 8.0;
-   double total_kb = total_bytes / 1024.0;
+   unsigned int total_bits     = svp_num_entries * bits_per_entry;
+   double total_bytes          = total_bits / 8.0;
+   double total_kb             = total_bytes / 1024.0;
 
    fprintf(out, "   One SVP entry:\n");
    fprintf(out, "      tag           : %3u bits  // num_tag_bits\n", svp_tag_bits);
