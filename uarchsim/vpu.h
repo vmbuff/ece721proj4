@@ -6,9 +6,11 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "vpu_iface.h"
+
 // VPU Class
 // Creates the Strided Value Predictor (SVP) and Value Prediction Queue (VPQ) structures
-class vpu {
+class vpu : public vpu_iface {
 private:
     // SVP entry
     // Prediction formula: retired_value + instance * stride
@@ -69,7 +71,7 @@ public:
     // Constructor - parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
     // oracleconf is handled externally in rename.cc and not stored here
     vpu(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max);
-    ~vpu();
+    ~vpu() override;
     vpu(const vpu&) = delete;
     vpu& operator=(const vpu&) = delete;
 
@@ -77,36 +79,37 @@ public:
     // Looks up SVP by PC - on hit, computes predicted value and confidence, increments instance
     // Always allocates a VPQ entry (even on miss) for retirement training and squash repair
     // Returns true on SVP hit, false on miss
-    bool predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index);
+    bool predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index) override;
 
     // Called from retire.cc per VP-eligible retired instruction
     // Trains SVP in program order using committed value from PRF
     // Tag match: updates stride, conf, retired_value, decrements instance
     // Tag miss: replaces entry, initializes instance by counting in-flight peers in VPQ
     // Frees VPQ head entry after training
-    void train(unsigned int vpq_index, uint64_t committed_val);
+    // inst_type is unused by the baseline SVP but required by the vpu_iface contract.
+    void train(unsigned int vpq_index, uint64_t committed_val, uint8_t inst_type) override;
 
     // Called from squash.cc on any pipeline squash
     // Walks VPQ backwards from current tail to (restored_tail, restored_tail_phase),
     // decrementing SVP instance counters for each discarded hit entry
     // Both position AND phase are required - VPQ can wrap a full vpq_size back to the
     // same position with the phase flipped, making a position-only check incorrect
-    void repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase);
+    void repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) override;
 
     // Called from rename2() to check if VPQ has enough free entries for the rename bundle
-    unsigned int vpq_free_entries();
+    unsigned int vpq_free_entries() override;
 
     // Called from rename2() at branch checkpoint creation - save alongside branch_ID
-    unsigned int get_vpq_tail();
-    bool         get_vpq_tail_phase();
+    unsigned int get_vpq_tail() override;
+    bool         get_vpq_tail_phase() override;
 
     // Called from squash.cc for squash_complete - repair target to discard all in-flight entries
-    unsigned int get_vpq_head();
-    bool         get_vpq_head_phase();
+    unsigned int get_vpq_head() override;
+    bool         get_vpq_head_phase() override;
 
     // Called at end of simulation - prints SVP storage cost accounting to stats log
     // VPQ is excluded from the storage budget per spec
-    void print_storage(FILE *out);
+    void print_storage(FILE *out) override;
 };
 
 #endif // VPU_H

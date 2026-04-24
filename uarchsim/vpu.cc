@@ -195,7 +195,7 @@ bool vpu::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident,
 // Tag match: updates stride, conf, retired_value, decrements instance (if svp_hit)
 // Tag miss: replaces SVP entry and initializes instance by counting in-flight peers in VPQ
 // Frees VPQ head entry after training
-void vpu::train(unsigned int vpq_index, uint64_t committed_val) {
+void vpu::train(unsigned int vpq_index, uint64_t committed_val, uint8_t /*inst_type*/) {
    assert(vpq_index == vpq_head); // Must always train the head entry (in-order retirement)
 
    unsigned int idx = vpq[vpq_index].svp_index;

@@ -42,7 +42,9 @@
 
 #include "lsu.h"               // LOAD/STORE UNIT
 
+#include "vpu_iface.h"         // VPU common interface
 #include "vpu.h"               // VALUE PREDICTION UNIT (SVP + VPQ)
+#include "vpu_eves.h"          // VPU EVES-style confidence + filtering variant (competition branch)
 
 #include "debug.h"
 
@@ -361,7 +363,7 @@ private:
    // Project 4 - Value Prediction
    // Value Prediction Unit (SVP + VPQ).
    /////////////////////////////////////////////////////////////
-   vpu *VPU;
+   vpu_iface *VPU;
    unsigned int vpq_tail_checkpoint[64];        // VPQ tail position for each branch checkpoint, indexed by branch_ID
    bool         vpq_tail_checkpoint_phase[64];  // VPQ tail phase bit for each branch checkpoint, needed with position
                                                 // incase VPU wraps around to distinguish between empty and full

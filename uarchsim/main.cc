@@ -395,6 +395,10 @@ static void set_vp_perf(const char *config) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
    }
+   if (enable && EVES_ENABLED) {
+      fprintf(stderr, "Error: --vp-perf and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
 
    PERFECT_VALUE_PRED = (enable ? true : false);
 }
@@ -420,6 +424,10 @@ static void set_vp_svp(const char *config) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
    }
+   if (EVES_ENABLED) {
+      fprintf(stderr, "Error: --vp-svp and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
 
    SVP_ENABLED     = true;
    VPQ_SIZE        = (unsigned int) vpqsize;
@@ -427,6 +435,33 @@ static void set_vp_svp(const char *config) {
    SVP_INDEX_BITS  = (unsigned int) indexbits;
    SVP_TAG_BITS    = (unsigned int) tagbits;
    SVP_CONF_MAX    = (unsigned int) confmax;
+}
+
+// Configure the EVES predictor (competition branch)
+// --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>
+// No oracleconf parameter (EVES's entire point is better real confidence).
+static void set_vp_eves(const char *config) {
+   uint64_t vpqsize, indexbits, tagbits, confmax;
+
+   if (sscanf(config, "%lu,%lu,%lu,%lu", &vpqsize, &indexbits, &tagbits, &confmax) != 4) {
+      fprintf(stderr, "Incorrect usage: --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>\n");
+      exit(-1);
+   }
+
+   if (PERFECT_VALUE_PRED) {
+      fprintf(stderr, "Error: --vp-perf and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+   if (SVP_ENABLED) {
+      fprintf(stderr, "Error: --vp-svp and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+
+   EVES_ENABLED    = true;
+   EVES_VPQ_SIZE   = (unsigned int) vpqsize;
+   EVES_INDEX_BITS = (unsigned int) indexbits;
+   EVES_TAG_BITS   = (unsigned int) tagbits;
+   EVES_CONF_MAX   = (unsigned int) confmax;
 }
 
 // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction
@@ -501,6 +536,8 @@ int main(int argc, char **argv) {
    parser.option(0, "vp-perf", 1, [&](const char *s) { set_vp_perf(s); });
    // --vp-svp to configure the Stride Value Predictor (VPQsize, oracleconf, # index bits, # tag bits, confmax)
    parser.option(0, "vp-svp", 1, [&](const char *s) { set_vp_svp(s); });
+   // --vp-eves to configure the EVES predictor (VPQsize, # index bits, # tag bits, confmax)
+   parser.option(0, "vp-eves", 1, [&](const char *s) { set_vp_eves(s); });
    // --vp-eligible to specify which instruction types are eligible for value prediction (predINTALU, predFPALU, predLOAD)
    parser.option(0, "vp-eligible", 1, [&](const char *s) { set_vp_eligible(s); });
 

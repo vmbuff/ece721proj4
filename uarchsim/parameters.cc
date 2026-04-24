@@ -148,12 +148,19 @@ bool predFPALU = false;
 bool predLOAD = false;                 
 
 // SVP configuration
-bool SVP_ENABLED = false;              
-bool SVP_ORACLE_CONF = false;          
-unsigned int VPQ_SIZE = 0;           
+bool SVP_ENABLED = false;
+bool SVP_ORACLE_CONF = false;
+unsigned int VPQ_SIZE = 0;
 unsigned int SVP_INDEX_BITS = 0;
 unsigned int SVP_TAG_BITS = 0;
 unsigned int SVP_CONF_MAX = 0;
+
+// EVES configuration (competition branch)
+bool         EVES_ENABLED    = false;
+unsigned int EVES_VPQ_SIZE   = 0;
+unsigned int EVES_INDEX_BITS = 0;
+unsigned int EVES_TAG_BITS   = 0;
+unsigned int EVES_CONF_MAX   = 0;
 
 // Benchmark control.
 bool logging_on = false;

@@ -117,9 +117,19 @@ extern bool predLOAD;                   // If true, instr. is a LOAD and eligibl
 extern bool SVP_ENABLED;                // If true, the Stride Value Predictor (SVP) is enabled
 extern bool SVP_ORACLE_CONF;            // If true, oracle confidence mode is enabled
 extern unsigned int VPQ_SIZE;           // Number of entries in the Value Prediction Queue (VPQ)
-extern unsigned int SVP_INDEX_BITS;     // Number of bits from the PC used to index into the SVP 
-extern unsigned int SVP_TAG_BITS;       // Number of bits used for the tag in the SVP  
-extern unsigned int SVP_CONF_MAX;       // Maximum confidence value for the SVP confidence counter 
+extern unsigned int SVP_INDEX_BITS;     // Number of bits from the PC used to index into the SVP
+extern unsigned int SVP_TAG_BITS;       // Number of bits used for the tag in the SVP
+extern unsigned int SVP_CONF_MAX;       // Maximum confidence value for the SVP confidence counter
+
+// EVES configuration (competition branch)
+// Confidence-and-filtering overlay on the SVP core: FPC counter + per-type
+// increment probabilities + 128-insn cooldown + SafeStride rate kill-switch.
+// Mutually exclusive with SVP_ENABLED and PERFECT_VALUE_PRED.
+extern bool         EVES_ENABLED;
+extern unsigned int EVES_VPQ_SIZE;
+extern unsigned int EVES_INDEX_BITS;
+extern unsigned int EVES_TAG_BITS;
+extern unsigned int EVES_CONF_MAX;
 
 // Benchmark control.
 extern bool logging_on;

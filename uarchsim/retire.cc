@@ -1,6 +1,20 @@
 #include "pipeline.h"
 #include "trap.h"
 #include "mmu.h"
+#include "vpu_iface.h"
+
+
+// Coarse instruction-type classification for the EVES per-type FPC table.
+// Loads bucket together (no cache-level plumbing in this scope), FP / AMO /
+// long-latency integer become SLOW, everything else is SINGLE_CYCLE_ALU. The
+// baseline vpu ignores the returned value so using this for all trainings is
+// safe regardless of which predictor is active.
+static inline uint8_t classify_vp_inst_type(const payload_t &p) {
+   if (IS_LOAD(p.flags))    return VPT_LOAD_L1HIT;
+   if (IS_FPALU(p.flags))   return VPT_SLOW_ALU_OR_FP;
+   if (p.flags & F_LONGLAT) return VPT_SLOW_ALU_OR_FP;
+   return VPT_SINGLE_CYCLE_ALU;
+}
 
 
 void pipeline_t::retire(size_t &instret) {
@@ -93,8 +107,10 @@ void pipeline_t::retire(size_t &instret) {
             if (PAY.buf[PAY.head].C_valid)
                committed_val = REN->read(PAY.buf[PAY.head].C_phys_reg);
 
-            // Train the VPU using this committed value
-            VPU->train(PAY.buf[PAY.head].vpq_index, committed_val);
+            // Train the VPU using this committed value. The inst_type argument
+            // is consumed by vpu_eves to select the per-type FPC increment
+            // probability. baseline vpu ignores
+            VPU->train(PAY.buf[PAY.head].vpq_index, committed_val, classify_vp_inst_type(PAY.buf[PAY.head]));
          }
 
          // Update value prediction statistics at retirement

@@ -255,12 +255,15 @@ pipeline_t::pipeline_t(
    // Project 4 - Value Prediction
    // Value Prediction Unit (SVP + VPQ)
    /////////////////////////////////////////////////////////////
-   // If svp is enabled, create new vpu using values from command line arguments
+   // If SVP is enabled, create baseline vpu; if EVES is enabled, create the
+   // confidence-and-filtering variant. The two flags are mutually exclusive
+   // (enforced at CLI parse time).
    if (SVP_ENABLED) {
       VPU = new vpu(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
-   // Otherwise, set VPU pointer to null
+   } else if (EVES_ENABLED) {
+      VPU = new vpu_eves(EVES_VPQ_SIZE, EVES_INDEX_BITS, EVES_TAG_BITS, EVES_CONF_MAX);
    } else {
-      VPU = (vpu *) NULL;
+      VPU = (vpu_iface *) NULL;
    }
 
    // Initialize VPQ tail checkpoint arrays to safe defaults
