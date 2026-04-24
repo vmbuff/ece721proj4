@@ -5,15 +5,13 @@
 
 
 // Coarse instruction-type classification for the EVES per-type FPC table.
-// Loads bucket together (no cache-level plumbing in this scope), FP / AMO /
-// long-latency integer become SLOW, everything else is SINGLE_CYCLE_ALU. The
-// baseline vpu ignores the returned value so using this for all trainings is
-// safe regardless of which predictor is active.
+// Three buckets mirroring the predINTALU / predFPALU / predLOAD eligibility
+// booleans in parameters.h. The baseline vpu ignores the returned value so
+// using this for all trainings is safe regardless of which predictor is active.
 static inline uint8_t classify_vp_inst_type(const payload_t &p) {
-   if (IS_LOAD(p.flags))    return VPT_LOAD_L1HIT;
-   if (IS_FPALU(p.flags))   return VPT_SLOW_ALU_OR_FP;
-   if (p.flags & F_LONGLAT) return VPT_SLOW_ALU_OR_FP;
-   return VPT_SINGLE_CYCLE_ALU;
+   if (IS_LOAD(p.flags))  return VPT_LOAD;
+   if (IS_FPALU(p.flags)) return VPT_FPALU;
+   return VPT_INTALU;
 }
 
 

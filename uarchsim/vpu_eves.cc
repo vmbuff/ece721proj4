@@ -1,20 +1,19 @@
-// Project 4 - Value Prediction (competition branch)
-// See vpu_eves.h for design rationale and paper citations.
 #include "vpu_eves.h"
 #include <cassert>
 #include <cmath>
 
-// Per-instruction-type FPC increment denominators. Index == vp_inst_type enum.
-// All powers of 2 so the probabilistic check reduces to an AND-mask on the
-// LFSR, matching the cheap-hardware assumption in Perais & Seznec HPCA14.
+// Per-instruction-type FPC increment denominators. Index == vp_inst_type enum,
+// which mirrors the three eligibility booleans in parameters.h
+// (predINTALU / predFPALU / predLOAD). Loads share one bucket -- no
+// LLC-miss vs L1-hit distinction (cache-hint plumbing is out of scope).
 //
-// p = 1/DENOM. LLCMISS=1 means "always increment" — reserved for future
-// cache-hint-aware plumbing. For now loads default to L1HIT (p=1/8).
+// p = 1/DENOM. All powers of 2 so the probabilistic check reduces to an
+// AND-mask on the 16-bit LFSR, matching the cheap-hardware assumption in
+// Perais & Seznec HPCA14.
 static const uint16_t P_INCR_DENOM[VPT_COUNT] = {
-    1,    // VPT_LOAD_LLCMISS      (reserved, unused in current plumbing)
-    8,    // VPT_LOAD_L1HIT
-    32,   // VPT_SLOW_ALU_OR_FP
-    128,  // VPT_SINGLE_CYCLE_ALU  (single biggest lever for hurt benchmarks)
+    128,  // VPT_INTALU  (single-cycle / LONGLAT ints -- largest demotion, biggest lever)
+     32,  // VPT_FPALU   (slower ALU / FP -- moderate demotion)
+      8,  // VPT_LOAD    (highest benefit -- least demotion)
 };
 
 vpu_eves::vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max) {
@@ -195,7 +194,7 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
             // a sample in the 0 bucket of a DENOM-wide uniform partition.
             // Because DENOM is a power of 2, (sample & (DENOM-1)) == 0 is
             // a uniform 1/DENOM Bernoulli trial.
-            uint8_t t = (inst_type < VPT_COUNT) ? inst_type : VPT_SINGLE_CYCLE_ALU;
+            uint8_t t = (inst_type < VPT_COUNT) ? inst_type : VPT_INTALU;
             uint16_t sample = lfsr_step();
             if ((sample & (P_INCR_DENOM[t] - 1)) == 0) {
                 if (svp[idx].conf < svp_conf_max) svp[idx].conf++;

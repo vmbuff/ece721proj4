@@ -12,16 +12,14 @@
 // per-instruction-type FPC increment probabilities (Seznec CVP-1 EVES table).
 // The SVP `vpu` implementation ignores this parameter.
 //
-// LLCMISS is reserved for a future cache-hint-aware path (not plumbed in the
-// Week-1 scope). Loads today default to L1HIT. The big lever is demoting
-// SINGLE_CYCLE_ALU to p=1/128 so noisy 1-cycle integer ops never reach
-// saturation on workloads like hmmer / sjeng / bzip2.
+// Buckets mirror the three eligibility booleans in parameters.h
+// (predINTALU, predFPALU, predLOAD). Loads are one undifferentiated bucket;
+// no LLC-miss vs L1-hit distinction (cache-hint plumbing is out of scope).
 enum vp_inst_type : uint8_t {
-    VPT_LOAD_LLCMISS     = 0,
-    VPT_LOAD_L1HIT       = 1,
-    VPT_SLOW_ALU_OR_FP   = 2,
-    VPT_SINGLE_CYCLE_ALU = 3,
-    VPT_COUNT            = 4
+    VPT_INTALU = 0,
+    VPT_FPALU  = 1,
+    VPT_LOAD   = 2,
+    VPT_COUNT  = 3
 };
 
 class vpu_iface {
