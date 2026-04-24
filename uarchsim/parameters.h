@@ -131,6 +131,14 @@ extern unsigned int EVES_INDEX_BITS;
 extern unsigned int EVES_TAG_BITS;
 extern unsigned int EVES_CONF_MAX;
 
+// EVES per-instruction-type FPC increment denominators (p = 1/DENOM).
+// Optional --vp-eves-denoms=<intalu>,<fpalu>,<load> flag; defaults preserve
+// the {128, 32, 8} table committed in 03f3d45. Any positive integer allowed
+// (probability check uses modulo, not AND-mask, so non-powers-of-2 are fine).
+extern unsigned int EVES_DENOM_INTALU;
+extern unsigned int EVES_DENOM_FPALU;
+extern unsigned int EVES_DENOM_LOAD;
+
 // Benchmark control.
 extern bool logging_on;
 extern int64_t logging_on_at;

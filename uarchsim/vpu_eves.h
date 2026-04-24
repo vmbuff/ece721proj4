@@ -73,6 +73,11 @@ private:
 
     // --- EVES additions ---
 
+    // Per-instruction-type FPC increment denominators, indexed by vp_inst_type.
+    // p = 1/denom. Probability check is (lfsr_sample % denom) == 0 so any
+    // positive integer is a valid denom (not only powers of 2).
+    unsigned int p_incr_denom[VPT_COUNT];
+
     // 16-bit LFSR driving FPC probabilistic increment decisions
     uint16_t lfsr;
 
@@ -103,9 +108,11 @@ private:
     bool         safestride_disabled() const;
 
 public:
-    // Constructor - same shape as vpu, plus: --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>
+    // Constructor - base shape from --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>;
+    // per-type denominators come from optional --vp-eves-denoms (defaults 128/32/8).
     // No oracleconf parameter (oracle confidence bypasses EVES's whole point).
-    vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max);
+    vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max,
+             unsigned int denom_intalu, unsigned int denom_fpalu, unsigned int denom_load);
     ~vpu_eves() override;
     vpu_eves(const vpu_eves&) = delete;
     vpu_eves& operator=(const vpu_eves&) = delete;

@@ -464,6 +464,26 @@ static void set_vp_eves(const char *config) {
    EVES_CONF_MAX   = (unsigned int) confmax;
 }
 
+// Configure the EVES per-instruction-type FPC increment denominators
+// --vp-eves-denoms=<intalu>,<fpalu>,<load>
+// Any positive integer allowed. Defaults (if flag is omitted) are 128,32,8.
+static void set_vp_eves_denoms(const char *config) {
+   uint64_t intalu, fpalu, load;
+
+   if (sscanf(config, "%lu,%lu,%lu", &intalu, &fpalu, &load) != 3) {
+      fprintf(stderr, "Incorrect usage: --vp-eves-denoms=<intalu>,<fpalu>,<load>\n");
+      exit(-1);
+   }
+   if (intalu == 0 || fpalu == 0 || load == 0) {
+      fprintf(stderr, "Error: --vp-eves-denoms values must be >= 1 (denom=1 means always-increment).\n");
+      exit(-1);
+   }
+
+   EVES_DENOM_INTALU = (unsigned int) intalu;
+   EVES_DENOM_FPALU  = (unsigned int) fpalu;
+   EVES_DENOM_LOAD   = (unsigned int) load;
+}
+
 // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction
 static void set_vp_eligible(const char *config) {
    // Holds parsed command line arguments for the eligibility of integer ALU, floating-point ALU, and load instructions for value prediction
@@ -538,6 +558,8 @@ int main(int argc, char **argv) {
    parser.option(0, "vp-svp", 1, [&](const char *s) { set_vp_svp(s); });
    // --vp-eves to configure the EVES predictor (VPQsize, # index bits, # tag bits, confmax)
    parser.option(0, "vp-eves", 1, [&](const char *s) { set_vp_eves(s); });
+   // --vp-eves-denoms to tune EVES per-instruction-type FPC increment denominators (intalu, fpalu, load)
+   parser.option(0, "vp-eves-denoms", 1, [&](const char *s) { set_vp_eves_denoms(s); });
    // --vp-eligible to specify which instruction types are eligible for value prediction (predINTALU, predFPALU, predLOAD)
    parser.option(0, "vp-eligible", 1, [&](const char *s) { set_vp_eligible(s); });
 

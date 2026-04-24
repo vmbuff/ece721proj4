@@ -261,7 +261,8 @@ pipeline_t::pipeline_t(
    if (SVP_ENABLED) {
       VPU = new vpu(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
    } else if (EVES_ENABLED) {
-      VPU = new vpu_eves(EVES_VPQ_SIZE, EVES_INDEX_BITS, EVES_TAG_BITS, EVES_CONF_MAX);
+      VPU = new vpu_eves(EVES_VPQ_SIZE, EVES_INDEX_BITS, EVES_TAG_BITS, EVES_CONF_MAX,
+                         EVES_DENOM_INTALU, EVES_DENOM_FPALU, EVES_DENOM_LOAD);
    } else {
       VPU = (vpu_iface *) NULL;
    }

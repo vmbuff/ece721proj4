@@ -2,26 +2,26 @@
 #include <cassert>
 #include <cmath>
 
-// Per-instruction-type FPC increment denominators. Index == vp_inst_type enum,
-// which mirrors the three eligibility booleans in parameters.h
-// (predINTALU / predFPALU / predLOAD). Loads share one bucket -- no
-// LLC-miss vs L1-hit distinction (cache-hint plumbing is out of scope).
+// Per-instruction-type FPC increment denominators now live in member fields
+// (set from the constructor, backed by --vp-eves-denoms). Index ==
+// vp_inst_type enum, which mirrors the three eligibility booleans in
+// parameters.h (predINTALU / predFPALU / predLOAD). Loads share one bucket --
+// no LLC-miss vs L1-hit distinction (cache-hint plumbing is out of scope).
 //
-// p = 1/DENOM. All powers of 2 so the probabilistic check reduces to an
-// AND-mask on the 16-bit LFSR, matching the cheap-hardware assumption in
-// Perais & Seznec HPCA14.
-static const uint16_t P_INCR_DENOM[VPT_COUNT] = {
-    128,  // VPT_INTALU  (single-cycle / LONGLAT ints -- largest demotion, biggest lever)
-     32,  // VPT_FPALU   (slower ALU / FP -- moderate demotion)
-      8,  // VPT_LOAD    (highest benefit -- least demotion)
-};
+// p = 1/DENOM. Probability test is (sample % DENOM) == 0 so any positive
+// integer works; caller guarantees denom >= 1 (see set_vp_eves_denoms).
 
-vpu_eves::vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max) {
+vpu_eves::vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max,
+                   unsigned int denom_intalu, unsigned int denom_fpalu, unsigned int denom_load) {
     svp_index_bits  = index_bits;
     svp_tag_bits    = tag_bits;
     svp_conf_max    = conf_max;
     svp_num_entries = (1U << index_bits);
     this->vpq_size  = vpq_size;
+
+    p_incr_denom[VPT_INTALU] = denom_intalu;
+    p_incr_denom[VPT_FPALU]  = denom_fpalu;
+    p_incr_denom[VPT_LOAD]   = denom_load;
 
     svp = new svp_entry_t[svp_num_entries];
     for (unsigned int i = 0; i < svp_num_entries; i++) {
@@ -190,13 +190,12 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
         int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
 
         if (new_stride == svp[idx].stride) {
-            // Forward Probabilistic Counter: increment only when LFSR draws
-            // a sample in the 0 bucket of a DENOM-wide uniform partition.
-            // Because DENOM is a power of 2, (sample & (DENOM-1)) == 0 is
-            // a uniform 1/DENOM Bernoulli trial.
+            // Forward Probabilistic Counter: increment only when a uniform
+            // sample modulo DENOM equals 0 -- a 1/DENOM Bernoulli trial for
+            // any positive integer DENOM. Constructor ensures denom >= 1.
             uint8_t t = (inst_type < VPT_COUNT) ? inst_type : VPT_INTALU;
             uint16_t sample = lfsr_step();
-            if ((sample & (P_INCR_DENOM[t] - 1)) == 0) {
+            if ((sample % p_incr_denom[t]) == 0) {
                 if (svp[idx].conf < svp_conf_max) svp[idx].conf++;
             }
         } else {
@@ -270,6 +269,8 @@ void vpu_eves::print_storage(FILE *out) {
     double       total_kb    = total_bytes / 1024.0;
 
     fprintf(out, "   EVES predictor storage accounting (SVP core + EVES overhead):\n");
+    fprintf(out, "   FPC denominators: intalu=%u, fpalu=%u, load=%u\n",
+            p_incr_denom[VPT_INTALU], p_incr_denom[VPT_FPALU], p_incr_denom[VPT_LOAD]);
     fprintf(out, "   One SVP entry:\n");
     fprintf(out, "      tag           : %3u bits\n", svp_tag_bits);
     fprintf(out, "      conf          : %3u bits\n", conf_bits);
