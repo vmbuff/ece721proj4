@@ -2,49 +2,40 @@
 #include <cassert>
 #include <cmath>
 
-// Per-instruction-type FPC increment denominators now live in member fields
-// (set from the constructor, backed by --vp-eves-denoms). Index ==
-// vp_inst_type enum, which mirrors the three eligibility booleans in
-// parameters.h (predINTALU / predFPALU / predLOAD). Loads share one bucket --
-// no LLC-miss vs L1-hit distinction (cache-hint plumbing is out of scope).
-//
-// p = 1/DENOM. Probability test is (sample % DENOM) == 0 so any positive
-// integer works; caller guarantees denom >= 1 (see set_vp_eves_denoms).
-
 vpu_eves::vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max,
                    unsigned int denom_intalu, unsigned int denom_fpalu, unsigned int denom_load) {
-    svp_index_bits  = index_bits;
-    svp_tag_bits    = tag_bits;
-    svp_conf_max    = conf_max;
+    svp_index_bits = index_bits;
+    svp_tag_bits = tag_bits;
+    svp_conf_max = conf_max;
     svp_num_entries = (1U << index_bits);
-    this->vpq_size  = vpq_size;
+    this->vpq_size = vpq_size;
 
     p_incr_denom[VPT_INTALU] = denom_intalu;
-    p_incr_denom[VPT_FPALU]  = denom_fpalu;
-    p_incr_denom[VPT_LOAD]   = denom_load;
+    p_incr_denom[VPT_FPALU] = denom_fpalu;
+    p_incr_denom[VPT_LOAD] = denom_load;
 
+    // allocate SVP table, start all entries as invalid
     svp = new svp_entry_t[svp_num_entries];
     for (unsigned int i = 0; i < svp_num_entries; i++) {
-        svp[i].tag           = 0;
-        svp[i].stride        = 0;
+        svp[i].tag = 0;
+        svp[i].stride = 0;
         svp[i].retired_value = 0;
-        svp[i].instance      = 0;
-        svp[i].conf          = 0;
-        svp[i].valid         = false;
+        svp[i].instance = 0;
+        svp[i].conf = 0;
+        svp[i].valid = false;
     }
 
     vpq = new vpq_entry_t[vpq_size];
-    vpq_head       = 0;
+    vpq_head = 0;
+    vpq_tail = 0;
     vpq_head_phase = false;
-    vpq_tail       = 0;
     vpq_tail_phase = false;
 
-    lfsr                    = 0xACE1u;  // non-zero seed
-    retire_count            = 0;
-    last_misp_retire_count  = 0;
-
+    lfsr = 0xACE1;
+    retire_count = 0;
+    last_misp_retire_count = 0;
     safestride_total = 0;
-    safestride_miss  = 0;
+    safestride_miss = 0;
 }
 
 vpu_eves::~vpu_eves() {
@@ -77,22 +68,28 @@ uint64_t vpu_eves::count_inflight_instances(unsigned int svp_index) {
             count++;
         }
         pos++;
-        if (pos == vpq_size) { pos = 0; phase = !phase; }
+        if (pos == vpq_size) { 
+            pos = 0; 
+            phase = !phase; 
+        }
     }
     return count;
 }
 
-// Galois LFSR with taps at bits 16, 14, 13, 11 (period 2^16 - 1).
+// Galois LFSR - gives us a pseudo-random 16-bit number each call
 uint16_t vpu_eves::lfsr_step() {
-    uint16_t bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 1u;
-    lfsr = (lfsr >> 1) | (uint16_t)(bit << 15);
+    uint16_t b0 = (lfsr >> 0) & 1;
+    uint16_t b2 = (lfsr >> 2) & 1;
+    uint16_t b3 = (lfsr >> 3) & 1;
+    uint16_t b5 = (lfsr >> 5) & 1;
+
+    uint16_t feedback = b0 ^ b2 ^ b3 ^ b5;
+    lfsr = (lfsr >> 1) | (feedback << 15);
     return lfsr;
 }
 
-bool vpu_eves::safestride_disabled() const {
+bool vpu_eves::safestride_disabled() {
     if (safestride_total < SAFESTRIDE_WARMUP) return false;
-    // Suppress when miss * DENOM > total  (i.e., rate > 1/DENOM).
-    // Using 64-bit arithmetic to avoid overflow at 32 bits worst case.
     return ((uint64_t)safestride_miss * SAFESTRIDE_RATE_DENOM) > (uint64_t)safestride_total;
 }
 
@@ -106,15 +103,22 @@ unsigned int vpu_eves::vpq_free_entries() {
     }
 }
 
-unsigned int vpu_eves::get_vpq_tail()       { return vpq_tail; }
-unsigned int vpu_eves::get_vpq_head()       { return vpq_head; }
-bool         vpu_eves::get_vpq_tail_phase() { return vpq_tail_phase; }
-bool         vpu_eves::get_vpq_head_phase() { return vpq_head_phase; }
+unsigned int vpu_eves::get_vpq_tail() { 
+    return vpq_tail; 
+}
+unsigned int vpu_eves::get_vpq_head() { 
+    return vpq_head; 
+}
+bool vpu_eves::get_vpq_tail_phase() { 
+    return vpq_tail_phase; 
+}
+bool vpu_eves::get_vpq_head_phase() { 
+    return vpq_head_phase; 
+}
 
 bool vpu_eves::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confident, unsigned int &out_vpq_index) {
     unsigned int idx = get_svp_index(pc);
 
-    // Hit semantics are identical to the baseline SVP (see vpu.cc comment).
     bool hit;
     if (svp_tag_bits == 0) {
         hit = true;
@@ -122,14 +126,11 @@ bool vpu_eves::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confi
         hit = svp[idx].valid && tag_matches(idx, pc);
     }
 
-    // EVES filters operate on top of the hit computation. If either the
-    // cooldown or the SafeStride kill-switch is active, the VPQ entry is
-    // still allocated and the instance counter is still incremented (so
-    // repair/train continue to balance), but the emitted confidence is
-    // forced to false so the pipeline does not inject the prediction.
+    //If SafeStride is active, or cooldown is active, then filter block is true
+    // which still trains the predictor but the pipeline does not inject the prediction
     bool filter_block = false;
     if (retire_count - last_misp_retire_count < MISP_COOLDOWN) filter_block = true;
-    if (safestride_disabled())                                 filter_block = true;
+    if (safestride_disabled()) filter_block = true;
 
     if (hit) {
         svp[idx].instance++;
@@ -153,7 +154,10 @@ bool vpu_eves::predict(uint64_t pc, uint64_t &out_predicted_val, bool &out_confi
     }
 
     vpq_tail++;
-    if (vpq_tail == vpq_size) { vpq_tail = 0; vpq_tail_phase = !vpq_tail_phase; }
+    if (vpq_tail == vpq_size) { 
+        vpq_tail = 0; 
+        vpq_tail_phase = !vpq_tail_phase; 
+    }
 
     return hit;
 }
@@ -162,27 +166,25 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
     assert(vpq_index == vpq_head);
 
     unsigned int idx = vpq[vpq_index].svp_index;
-    uint64_t pc      = vpq[vpq_index].pc;
-    bool     was_confident_pred = vpq[vpq_index].confident;
-    uint64_t predicted_val      = vpq[vpq_index].predicted_value;
+    uint64_t pc = vpq[vpq_index].pc;
+    uint64_t predicted_val = vpq[vpq_index].predicted_value;
+    bool was_confident_pred = vpq[vpq_index].confident;
 
     retire_count++;
 
-    // Periodic SafeStride decay - divide counters by 2 every RESET_PERIOD
-    // so a transient bad region doesn't kill the stride predictor forever.
+    // halve the SafeStride counters every RESET_PERIOD so a bad phase
+    // doesn't kill the stride predictor forever
     if ((retire_count % SAFESTRIDE_RESET_PERIOD) == 0) {
-        safestride_total >>= 1;
-        safestride_miss  >>= 1;
+        safestride_total = safestride_total >> 1;
+        safestride_miss = safestride_miss >> 1;
     }
 
-    // SafeStride: count every emitted prediction into total regardless of
-    // correctness. This measures rate across ALL PCs jointly - EVES's
-    // per-trace adaptive signal, not per-entry.
+    // count every confident prediction and whether it was right or wrong
     if (was_confident_pred) {
         if (safestride_total < UINT32_MAX) safestride_total++;
         if (committed_val != predicted_val) {
             if (safestride_miss < UINT32_MAX) safestride_miss++;
-            last_misp_retire_count = retire_count;        // arm 128-insn cooldown
+            last_misp_retire_count = retire_count;
         }
     }
 
@@ -190,17 +192,17 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
         int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
 
         if (new_stride == svp[idx].stride) {
-            // Forward Probabilistic Counter: increment only when a uniform
-            // sample modulo DENOM equals 0 -- a 1/DENOM Bernoulli trial for
-            // any positive integer DENOM. Constructor ensures denom >= 1.
+            // Forward Probabilistic Counter: only bump conf with
+            // probability 1/denom for this instruction type
             uint8_t t = (inst_type < VPT_COUNT) ? inst_type : VPT_INTALU;
             uint16_t sample = lfsr_step();
             if ((sample % p_incr_denom[t]) == 0) {
                 if (svp[idx].conf < svp_conf_max) svp[idx].conf++;
             }
-        } else {
+        }
+        else {
             svp[idx].stride = new_stride;
-            svp[idx].conf   = 0;
+            svp[idx].conf = 0;
         }
 
         svp[idx].retired_value = committed_val;
@@ -209,26 +211,34 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
             assert(svp[idx].instance > 0);
             svp[idx].instance--;
         }
-    } else {
-        svp[idx].tag           = get_svp_tag(pc);
+    }
+    else {
+        // Tag miss - replace the entry
+        svp[idx].tag = get_svp_tag(pc);
         svp[idx].retired_value = committed_val;
-        svp[idx].stride        = (int64_t)committed_val;
-        svp[idx].conf          = 0;
-        svp[idx].valid         = true;
+        svp[idx].stride = (int64_t)committed_val;
+        svp[idx].conf = 0;
+        svp[idx].valid = true;
 
-        unsigned int save_head  = vpq_head;
-        bool         save_phase = vpq_head_phase;
+        unsigned int save_head = vpq_head;
+        bool save_phase = vpq_head_phase;
 
         vpq_head++;
-        if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+        if (vpq_head == vpq_size) {
+            vpq_head = 0;
+            vpq_head_phase = !vpq_head_phase;
+        }
 
         svp[idx].instance = count_inflight_instances(idx);
-        vpq_head       = save_head;
+        vpq_head = save_head;
         vpq_head_phase = save_phase;
     }
 
     vpq_head++;
-    if (vpq_head == vpq_size) { vpq_head = 0; vpq_head_phase = !vpq_head_phase; }
+    if (vpq_head == vpq_size) { 
+        vpq_head = 0; 
+        vpq_head_phase = !vpq_head_phase; 
+    }
 }
 
 void vpu_eves::repair(unsigned int restored_vpq_tail, bool restored_vpq_tail_phase) {
@@ -255,36 +265,29 @@ void vpu_eves::print_storage(FILE *out) {
         instance_bits = 1;
     }
 
-    unsigned int conf_bits      = (unsigned int)ceil(log2((double)(svp_conf_max + 1)));
+    unsigned int conf_bits = (unsigned int)ceil(log2((double)(svp_conf_max + 1)));
     unsigned int bits_per_entry = svp_tag_bits + conf_bits + 64 + 64 + instance_bits;
     unsigned int svp_total_bits = svp_num_entries * bits_per_entry;
 
-    // EVES overhead: 16-bit LFSR + two 32-bit SafeStride counters +
-    // misprediction-date counter (reuse of existing 64-bit retire_count is
-    // an implementation-only counter and excluded, same rule as VPQ pointers).
+    // EVES adds the LFSR state plus the two SafeStride counters on top of
+    // the SVP fields counted above. retire_count is not counted (same as
+    // the VPQ pointers).
     unsigned int eves_overhead_bits = 16 + 32 + 32;
+    unsigned int total_bits = svp_total_bits + eves_overhead_bits;
+    double total_bytes = total_bits / 8.0;
+    double total_kb = total_bytes / 1024.0;
 
-    unsigned int total_bits  = svp_total_bits + eves_overhead_bits;
-    double       total_bytes = total_bits / 8.0;
-    double       total_kb    = total_bytes / 1024.0;
-
-    fprintf(out, "   EVES predictor storage accounting (SVP core + EVES overhead):\n");
+    fprintf(out, "   EVES predictor storage (SVP core + EVES overhead):\n");
     fprintf(out, "   FPC denominators: intalu=%u, fpalu=%u, load=%u\n",
             p_incr_denom[VPT_INTALU], p_incr_denom[VPT_FPALU], p_incr_denom[VPT_LOAD]);
     fprintf(out, "   One SVP entry:\n");
-    fprintf(out, "      tag           : %3u bits\n", svp_tag_bits);
-    fprintf(out, "      conf          : %3u bits\n", conf_bits);
-    fprintf(out, "      retired_value :  64 bits\n");
-    fprintf(out, "      stride        :  64 bits\n");
-    fprintf(out, "      instance ctr  : %3u bits\n", instance_bits);
-    fprintf(out, "      -------------------------\n");
-    fprintf(out, "      bits/SVP entry: %u bits\n", bits_per_entry);
+    fprintf(out, "      tag: %u bits\n", svp_tag_bits);
+    fprintf(out, "      conf: %u bits\n", conf_bits);
+    fprintf(out, "      retired_value: 64 bits\n");
+    fprintf(out, "      stride: 64 bits\n");
+    fprintf(out, "      instance ctr: %u bits\n", instance_bits);
+    fprintf(out, "      total per entry: %u bits\n", bits_per_entry);
     fprintf(out, "   SVP core: %u entries x %u bits = %u bits\n", svp_num_entries, bits_per_entry, svp_total_bits);
-    fprintf(out, "   EVES overhead:\n");
-    fprintf(out, "      LFSR state         : 16 bits\n");
-    fprintf(out, "      SafeStride total   : 32 bits\n");
-    fprintf(out, "      SafeStride miss    : 32 bits\n");
-    fprintf(out, "      EVES overhead total: %u bits\n", eves_overhead_bits);
-    fprintf(out, "   Total storage cost (bits)  = %u bits\n", total_bits);
-    fprintf(out, "   Total storage cost (bytes) = %.2f B (%.2f KB)\n", total_bytes, total_kb);
+    fprintf(out, "   EVES overhead: LFSR(16) + SafeStride total(32) + SafeStride miss(32) = %u bits\n", eves_overhead_bits);
+    fprintf(out, "   Total: %u bits (%.2f B, %.2f KB)\n", total_bits, total_bytes, total_kb);
 }

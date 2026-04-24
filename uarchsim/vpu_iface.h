@@ -19,8 +19,7 @@ enum vp_inst_type : uint8_t {
 // VPU Interface class
 class vpu_iface {
 public:
-   // Virtual destructor so derived predictors clean up through the base pointer
-   virtual ~vpu_iface() = default;
+    virtual ~vpu_iface() = default;
 
    // Generates a value prediction and allocates a VPQ entry
    virtual bool predict(uint64_t pc,

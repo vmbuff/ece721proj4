@@ -71,7 +71,7 @@ public:
     // Constructor - parameters map to --vp-svp=<vpq_size>,<oracleconf>,<index_bits>,<tag_bits>,<conf_max>
     // oracleconf is handled externally in rename.cc and not stored here
     vpu(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max);
-    ~vpu() override;
+    ~vpu();
     vpu(const vpu&) = delete;
     vpu& operator=(const vpu&) = delete;
 
@@ -86,7 +86,7 @@ public:
     // Tag match: updates stride, conf, retired_value, decrements instance
     // Tag miss: replaces entry, initializes instance by counting in-flight peers in VPQ
     // Frees VPQ head entry after training
-    // inst_type is unused by the baseline SVP but required by the vpu_iface contract.
+    // inst_type is unused here - the EVES variant uses it.
     void train(unsigned int vpq_index, uint64_t committed_val, uint8_t inst_type) override;
 
     // Called from squash.cc on any pipeline squash
