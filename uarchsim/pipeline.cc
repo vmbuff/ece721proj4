@@ -90,13 +90,13 @@ pipeline_t::pipeline_t(
    // Initialize extra wait time for inum.
    extra_wait_time_for_inum = 0;
 
-   // Value Prediction measurement counters.
-   vpmeas_ineligible    = 0;
-   vpmeas_eligible      = 0;
-   vpmeas_miss          = 0;
-   vpmeas_conf_corr     = 0;
-   vpmeas_conf_incorr   = 0;
-   vpmeas_unconf_corr   = 0;
+   // Initialize statistics related to value prediction
+   vpmeas_ineligible = 0;
+   vpmeas_eligible = 0;
+   vpmeas_miss = 0;
+   vpmeas_conf_corr = 0;
+   vpmeas_conf_incorr = 0;
+   vpmeas_unconf_corr = 0;
    vpmeas_unconf_incorr = 0;
 
    /////////////////////////////////////////////////////////////
@@ -255,21 +255,20 @@ pipeline_t::pipeline_t(
    // Project 4 - Value Prediction
    // Value Prediction Unit (SVP + VPQ)
    /////////////////////////////////////////////////////////////
-   // If SVP is enabled, create baseline vpu; if EVES is enabled, create the
-   // confidence-and-filtering variant. The two flags are mutually exclusive
-   // (enforced at CLI parse time).
+   // If SVP is enabled, create (SVP + VPQ) VPU (Project 4 Part 2.1)
    if (SVP_ENABLED) {
       VPU = new vpu(VPQ_SIZE, SVP_INDEX_BITS, SVP_TAG_BITS, SVP_CONF_MAX);
+   // If EVES is enabled, create EVES VPU (Project 4 Part 2.2)
    } else if (EVES_ENABLED) {
-      VPU = new vpu_eves(EVES_VPQ_SIZE, EVES_INDEX_BITS, EVES_TAG_BITS, EVES_CONF_MAX,
-                         EVES_DENOM_INTALU, EVES_DENOM_FPALU, EVES_DENOM_LOAD);
+      VPU = new vpu_eves(EVES_VPQ_SIZE, EVES_INDEX_BITS, EVES_TAG_BITS, EVES_CONF_MAX, EVES_DENOM_INTALU, EVES_DENOM_FPALU, EVES_DENOM_LOAD);
+   // Otherwise, value prediction is not enabled, so set VPU pointer to NULL
    } else {
       VPU = (vpu_iface *) NULL;
    }
 
-   // Initialize VPQ tail checkpoint arrays to safe defaults
+   // Initialize VPQ tail checkpoint arrays
    for (int i = 0; i < 64; i++) {
-      vpq_tail_checkpoint[i]       = 0;
+      vpq_tail_checkpoint[i] = 0;
       vpq_tail_checkpoint_phase[i] = false;
    }
 

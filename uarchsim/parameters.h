@@ -121,23 +121,16 @@ extern unsigned int SVP_INDEX_BITS;     // Number of bits from the PC used to in
 extern unsigned int SVP_TAG_BITS;       // Number of bits used for the tag in the SVP
 extern unsigned int SVP_CONF_MAX;       // Maximum confidence value for the SVP confidence counter
 
-// EVES configuration (competition branch)
-// Confidence-and-filtering overlay on the SVP core: FPC counter + per-type
-// increment probabilities + 128-insn cooldown + SafeStride rate kill-switch.
-// Mutually exclusive with SVP_ENABLED and PERFECT_VALUE_PRED.
-extern bool         EVES_ENABLED;
-extern unsigned int EVES_VPQ_SIZE;
-extern unsigned int EVES_INDEX_BITS;
-extern unsigned int EVES_TAG_BITS;
-extern unsigned int EVES_CONF_MAX;
+// Project 4 - Competition
+extern bool EVES_ENABLED;               // If true, the EVES-inspired value predictor is enabled
+extern unsigned int EVES_VPQ_SIZE;      // Number of entries in the EVES Value Prediction Queue (VPQ)
+extern unsigned int EVES_INDEX_BITS;    // Number of bits from the PC used to index into the EVES table
+extern unsigned int EVES_TAG_BITS;      // Number of bits used for the tag in the EVES table
+extern unsigned int EVES_CONF_MAX;      // Maximum confidence value for the EVES confidence counter
 
-// EVES per-instruction-type FPC increment denominators (p = 1/DENOM).
-// Optional --vp-eves-denoms=<intalu>,<fpalu>,<load> flag; defaults preserve
-// the {128, 32, 8} table committed in 03f3d45. Any positive integer allowed
-// (probability check uses modulo, not AND-mask, so non-powers-of-2 are fine).
-extern unsigned int EVES_DENOM_INTALU;
-extern unsigned int EVES_DENOM_FPALU;
-extern unsigned int EVES_DENOM_LOAD;
+extern unsigned int EVES_DENOM_INTALU;  // FPC increment denominator for INTALU instructions (p = 1/DENOM)
+extern unsigned int EVES_DENOM_FPALU;   // FPC increment denominator for FPALU instructions (p = 1/DENOM)
+extern unsigned int EVES_DENOM_LOAD;    // FPC increment denominator for LOAD instructions (p = 1/DENOM)
 
 // Benchmark control.
 extern bool logging_on;

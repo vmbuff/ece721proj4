@@ -395,6 +395,8 @@ static void set_vp_perf(const char *config) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
    }
+
+   // --vp-eves is mutually exclusive with --vp-perf
    if (enable && EVES_ENABLED) {
       fprintf(stderr, "Error: --vp-perf and --vp-eves are mutually exclusive. Specify only one.\n");
       exit(-1);
@@ -424,6 +426,8 @@ static void set_vp_svp(const char *config) {
       fprintf(stderr, "Error: --vp-perf and --vp-svp are mutually exclusive. Specify only one.\n");
       exit(-1);
    }
+   
+   // --vp-svp is mutually exclusive with --vp-eves
    if (EVES_ENABLED) {
       fprintf(stderr, "Error: --vp-svp and --vp-eves are mutually exclusive. Specify only one.\n");
       exit(-1);
@@ -435,53 +439,6 @@ static void set_vp_svp(const char *config) {
    SVP_INDEX_BITS  = (unsigned int) indexbits;
    SVP_TAG_BITS    = (unsigned int) tagbits;
    SVP_CONF_MAX    = (unsigned int) confmax;
-}
-
-// Configure the EVES predictor (competition branch)
-// --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>
-// No oracleconf parameter (EVES's entire point is better real confidence).
-static void set_vp_eves(const char *config) {
-   uint64_t vpqsize, indexbits, tagbits, confmax;
-
-   if (sscanf(config, "%lu,%lu,%lu,%lu", &vpqsize, &indexbits, &tagbits, &confmax) != 4) {
-      fprintf(stderr, "Incorrect usage: --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>\n");
-      exit(-1);
-   }
-
-   if (PERFECT_VALUE_PRED) {
-      fprintf(stderr, "Error: --vp-perf and --vp-eves are mutually exclusive. Specify only one.\n");
-      exit(-1);
-   }
-   if (SVP_ENABLED) {
-      fprintf(stderr, "Error: --vp-svp and --vp-eves are mutually exclusive. Specify only one.\n");
-      exit(-1);
-   }
-
-   EVES_ENABLED    = true;
-   EVES_VPQ_SIZE   = (unsigned int) vpqsize;
-   EVES_INDEX_BITS = (unsigned int) indexbits;
-   EVES_TAG_BITS   = (unsigned int) tagbits;
-   EVES_CONF_MAX   = (unsigned int) confmax;
-}
-
-// Configure the EVES per-instruction-type FPC increment denominators
-// --vp-eves-denoms=<intalu>,<fpalu>,<load>
-// Any positive integer allowed. Defaults (if flag is omitted) are 128,32,8.
-static void set_vp_eves_denoms(const char *config) {
-   uint64_t intalu, fpalu, load;
-
-   if (sscanf(config, "%lu,%lu,%lu", &intalu, &fpalu, &load) != 3) {
-      fprintf(stderr, "Incorrect usage: --vp-eves-denoms=<intalu>,<fpalu>,<load>\n");
-      exit(-1);
-   }
-   if (intalu == 0 || fpalu == 0 || load == 0) {
-      fprintf(stderr, "Error: --vp-eves-denoms values must be >= 1 (denom=1 means always-increment).\n");
-      exit(-1);
-   }
-
-   EVES_DENOM_INTALU = (unsigned int) intalu;
-   EVES_DENOM_FPALU  = (unsigned int) fpalu;
-   EVES_DENOM_LOAD   = (unsigned int) load;
 }
 
 // If value prediction is enabled (either perfect or real), specify which instructions are eligible for value prediction
@@ -499,6 +456,65 @@ static void set_vp_eligible(const char *config) {
       predFPALU = (fpalu ? true : false);
       predLOAD = (load ? true : false);
    }
+}
+
+// Project 4 - Competition
+// Configure the EVES predictor
+static void set_vp_eves(const char *config) {
+   // Hold parsed command line arguments for configuration values of EVES
+   uint64_t vpqsize;
+   uint64_t indexbits;
+   uint64_t tagbits;
+   uint64_t confmax;
+
+   // --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>
+   if (sscanf(config, "%lu,%lu,%lu,%lu", &vpqsize, &indexbits, &tagbits, &confmax) != 4) {
+      fprintf(stderr, "Incorrect usage: --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>\n");
+      exit(-1);
+   }
+
+   // --vp-eves is mutually exclusive with --vp-perf
+   if (PERFECT_VALUE_PRED) {
+      fprintf(stderr, "Error: --vp-perf and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+
+   // --vp-eves is mutually exclusive with --vp-svp
+   if (SVP_ENABLED) {
+      fprintf(stderr, "Error: --vp-svp and --vp-eves are mutually exclusive. Specify only one.\n");
+      exit(-1);
+   }
+
+   EVES_ENABLED    = true;
+   EVES_VPQ_SIZE   = (unsigned int) vpqsize;
+   EVES_INDEX_BITS = (unsigned int) indexbits;
+   EVES_TAG_BITS   = (unsigned int) tagbits;
+   EVES_CONF_MAX   = (unsigned int) confmax;
+}
+
+// Configure the EVES per-instruction-type FPC increment denominators
+static void set_vp_eves_denoms(const char *config) {
+   // Hold parsed command line arguments for the per-instruction-type FPC increment denominators
+   uint64_t intalu;
+   uint64_t fpalu;
+   uint64_t load;
+
+   // --vp-eves-denoms=<intalu>,<fpalu>,<load>
+   // Default values set to 128, 32, and 8, respectively
+   if (sscanf(config, "%lu,%lu,%lu", &intalu, &fpalu, &load) != 3) {
+      fprintf(stderr, "Incorrect usage: --vp-eves-denoms=<intalu>,<fpalu>,<load>\n");
+      exit(-1);
+   }
+
+   // Must be values greater than 0 
+   if (intalu == 0 || fpalu == 0 || load == 0) {
+      fprintf(stderr, "Error: --vp-eves-denoms values must be >= 1 (denom=1 means always-increment).\n");
+      exit(-1);
+   }
+
+   EVES_DENOM_INTALU = (unsigned int) intalu;
+   EVES_DENOM_FPALU  = (unsigned int) fpalu;
+   EVES_DENOM_LOAD   = (unsigned int) load;
 }
 
 /* exit when this becomes non-zero */

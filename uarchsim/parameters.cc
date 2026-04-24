@@ -155,18 +155,18 @@ unsigned int SVP_INDEX_BITS = 0;
 unsigned int SVP_TAG_BITS = 0;
 unsigned int SVP_CONF_MAX = 0;
 
-// EVES configuration (competition branch)
-bool         EVES_ENABLED    = false;
-unsigned int EVES_VPQ_SIZE   = 0;
+// Project 4 - competition
+// EVES value prediction controls
+bool EVES_ENABLED = false;
+unsigned int EVES_VPQ_SIZE = 0;
 unsigned int EVES_INDEX_BITS = 0;
-unsigned int EVES_TAG_BITS   = 0;
-unsigned int EVES_CONF_MAX   = 0;
+unsigned int EVES_TAG_BITS = 0;
+unsigned int EVES_CONF_MAX = 0;
 
-// EVES per-type FPC increment denominators (defaults match the values hardcoded
-// in 03f3d45 before --vp-eves-denoms made them tunable).
+// FPC denominator value defaultss
 unsigned int EVES_DENOM_INTALU = 128;
-unsigned int EVES_DENOM_FPALU  = 32;
-unsigned int EVES_DENOM_LOAD   = 8;
+unsigned int EVES_DENOM_FPALU = 32;
+unsigned int EVES_DENOM_LOAD = 8;
 
 // Benchmark control.
 bool logging_on = false;

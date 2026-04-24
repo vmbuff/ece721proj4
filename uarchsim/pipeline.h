@@ -43,8 +43,10 @@
 #include "lsu.h"               // LOAD/STORE UNIT
 
 #include "vpu_iface.h"         // VPU common interface
+
 #include "vpu.h"               // VALUE PREDICTION UNIT (SVP + VPQ)
-#include "vpu_eves.h"          // VPU EVES-style confidence + filtering variant (competition branch)
+
+#include "vpu_eves.h"          // EVES VALUE PREDICTION UNIT
 
 #include "debug.h"
 
@@ -406,8 +408,8 @@ public:
    uint64_t num_insn;
    double extra_wait_time_for_inum;
 
-   // Project 4 - Value Prediction measurement counters (kept outside
-   // the stats_t counter_map so they don't appear in the [stats] block).
+   // Project 4 - Value Prediction
+   // Declare statistics related to value prediction
    uint64_t vpmeas_ineligible;
    uint64_t vpmeas_eligible;
    uint64_t vpmeas_miss;
