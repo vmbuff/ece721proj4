@@ -24,7 +24,7 @@ enum vp_inst_type : uint8_t {
 
 class vpu_iface {
 public:
-    virtual ~vpu_iface() = default;
+    virtual ~vpu_iface() {}
 
     virtual bool         predict(uint64_t pc,
                                  uint64_t &out_predicted_val,
