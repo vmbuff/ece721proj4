@@ -3,6 +3,9 @@
 #include "mmu.h"
 #include "vpu_iface.h"
 
+// Forward declaration - body is at the bottom of this file
+static inline uint8_t classify_vp_inst_type(const payload_t &p);
+
 
 void pipeline_t::retire(size_t &instret) {
    bool head_valid;

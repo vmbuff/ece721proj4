@@ -18,20 +18,20 @@
 class vpu_eves : public vpu_iface {
 private:
     struct svp_entry_t {
-        uint64_t     tag;
-        int64_t      stride;
-        uint64_t     retired_value;
-        uint64_t     instance;
+        uint64_t tag;
+        int64_t stride;
+        uint64_t retired_value;
+        uint64_t instance;
         unsigned int conf;
-        bool         valid;
+        bool valid;
     };
 
     struct vpq_entry_t {
-        uint64_t     pc;
+        uint64_t pc;
         unsigned int svp_index;
-        uint64_t     predicted_value;
-        bool         svp_hit;
-        bool         confident;
+        uint64_t predicted_value;
+        bool svp_hit;
+        bool confident;
     };
 
     // SVP table (direct-mapped, same as baseline)
@@ -45,9 +45,9 @@ private:
     vpq_entry_t *vpq;
     unsigned int vpq_size;
     unsigned int vpq_head;
-    bool         vpq_head_phase;
     unsigned int vpq_tail;
-    bool         vpq_tail_phase;
+    bool vpq_head_phase;
+    bool vpq_tail_phase;
 
     // EVES-specific state
 
@@ -59,29 +59,29 @@ private:
     uint16_t lfsr;
 
     // Cooldown counters
-    uint64_t retire_count;              // total retired VP-eligible instructions
-    uint64_t last_misp_retire_count;    // retire_count at last value mispredict
+    uint64_t retire_count;             // total retired VP-eligible instructions
+    uint64_t last_misp_retire_count;   // retire_count at last value mispredict
     static const unsigned int MISP_COOLDOWN = 128;
 
     // SafeStride counters (global kill-switch)
     uint32_t safestride_total;
     uint32_t safestride_miss;
-    static const uint32_t SAFESTRIDE_RATE_DENOM = 1024;     // off if miss/total > 1/1024
-    static const uint32_t SAFESTRIDE_WARMUP     = 4096;     // min total before we use it
-    static const uint32_t SAFESTRIDE_RESET_PERIOD = 1000000; // halve counters every ~1M retires
+    static const uint32_t SAFESTRIDE_RATE_DENOM = 1024;       // off if miss/total > 1/1024
+    static const uint32_t SAFESTRIDE_WARMUP = 4096;           // min total before we use it
+    static const uint32_t SAFESTRIDE_RESET_PERIOD = 1000000;  // halve counters every ~1M retires
 
     // Private helpers (same logic as vpu)
     unsigned int get_svp_index(uint64_t pc);
-    uint64_t     get_svp_tag(uint64_t pc);
-    bool         tag_matches(unsigned int idx, uint64_t pc);
-    uint64_t     count_inflight_instances(unsigned int svp_index);
+    uint64_t get_svp_tag(uint64_t pc);
+    bool tag_matches(unsigned int idx, uint64_t pc);
+    uint64_t count_inflight_instances(unsigned int svp_index);
 
     // Steps the LFSR and returns the new 16-bit value.
-    uint16_t     lfsr_step();
+    uint16_t lfsr_step();
 
     // Returns true if the stride predictor is currently turned off because
     // too many mispredicts happened recently (SafeStride kill-switch).
-    bool         safestride_disabled();
+    bool safestride_disabled();
 
 public:
     // Constructor - base config from --vp-eves=<VPQsize>,<indexbits>,<tagbits>,<confmax>
@@ -99,9 +99,9 @@ public:
     unsigned int vpq_free_entries() override;
 
     unsigned int get_vpq_tail() override;
-    bool         get_vpq_tail_phase() override;
+    bool get_vpq_tail_phase() override;
     unsigned int get_vpq_head() override;
-    bool         get_vpq_head_phase() override;
+    bool get_vpq_head_phase() override;
 
     void print_storage(FILE *out) override;
 };

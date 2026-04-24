@@ -4,38 +4,38 @@
 
 vpu_eves::vpu_eves(unsigned int vpq_size, unsigned int index_bits, unsigned int tag_bits, unsigned int conf_max,
                    unsigned int denom_intalu, unsigned int denom_fpalu, unsigned int denom_load) {
-    svp_index_bits  = index_bits;
-    svp_tag_bits    = tag_bits;
-    svp_conf_max    = conf_max;
+    svp_index_bits = index_bits;
+    svp_tag_bits = tag_bits;
+    svp_conf_max = conf_max;
     svp_num_entries = (1U << index_bits);
-    this->vpq_size  = vpq_size;
+    this->vpq_size = vpq_size;
 
     p_incr_denom[VPT_INTALU] = denom_intalu;
-    p_incr_denom[VPT_FPALU]  = denom_fpalu;
-    p_incr_denom[VPT_LOAD]   = denom_load;
+    p_incr_denom[VPT_FPALU] = denom_fpalu;
+    p_incr_denom[VPT_LOAD] = denom_load;
 
+    // allocate SVP table, start all entries as invalid
     svp = new svp_entry_t[svp_num_entries];
     for (unsigned int i = 0; i < svp_num_entries; i++) {
-        svp[i].tag           = 0;
-        svp[i].stride        = 0;
+        svp[i].tag = 0;
+        svp[i].stride = 0;
         svp[i].retired_value = 0;
-        svp[i].instance      = 0;
-        svp[i].conf          = 0;
-        svp[i].valid         = false;
+        svp[i].instance = 0;
+        svp[i].conf = 0;
+        svp[i].valid = false;
     }
 
     vpq = new vpq_entry_t[vpq_size];
-    vpq_head       = 0;
+    vpq_head = 0;
+    vpq_tail = 0;
     vpq_head_phase = false;
-    vpq_tail       = 0;
     vpq_tail_phase = false;
 
     lfsr = 0xACE1;
     retire_count = 0;
-    last_misp_retire_count  = 0;
-
+    last_misp_retire_count = 0;
     safestride_total = 0;
-    safestride_miss  = 0;
+    safestride_miss = 0;
 }
 
 vpu_eves::~vpu_eves() {
@@ -76,14 +76,15 @@ uint64_t vpu_eves::count_inflight_instances(unsigned int svp_index) {
     return count;
 }
 
-// Galois LFSR
+// Galois LFSR - gives us a pseudo-random 16-bit number each call
 uint16_t vpu_eves::lfsr_step() {
-    uint16_t bit0 = (lfsr >> 0) & 1u;
-    uint16_t bit2 = (lfsr >> 2) & 1u;
-    uint16_t bit3 = (lfsr >> 3) & 1u;
-    uint16_t bit5 = (lfsr >> 5) & 1u;
-    uint16_t feedback_bit = bit0 ^ bit2 ^ bit3 ^ bit5;
-    lfsr = (lfsr >> 1) | (feedback_bit << 15);
+    uint16_t b0 = (lfsr >> 0) & 1;
+    uint16_t b2 = (lfsr >> 2) & 1;
+    uint16_t b3 = (lfsr >> 3) & 1;
+    uint16_t b5 = (lfsr >> 5) & 1;
+
+    uint16_t feedback = b0 ^ b2 ^ b3 ^ b5;
+    lfsr = (lfsr >> 1) | (feedback << 15);
     return lfsr;
 }
 
@@ -166,23 +167,24 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
 
     unsigned int idx = vpq[vpq_index].svp_index;
     uint64_t pc = vpq[vpq_index].pc;
-    bool was_confident_pred = vpq[vpq_index].confident;
     uint64_t predicted_val = vpq[vpq_index].predicted_value;
+    bool was_confident_pred = vpq[vpq_index].confident;
 
     retire_count++;
 
-    // divide counters by 2 every RESET_PERIOD
+    // halve the SafeStride counters every RESET_PERIOD so a bad phase
+    // doesn't kill the stride predictor forever
     if ((retire_count % SAFESTRIDE_RESET_PERIOD) == 0) {
-        safestride_total >>= 1;
-        safestride_miss  >>= 1;
+        safestride_total = safestride_total >> 1;
+        safestride_miss = safestride_miss >> 1;
     }
 
-    // count every emitted prediction into total
+    // count every confident prediction and whether it was right or wrong
     if (was_confident_pred) {
         if (safestride_total < UINT32_MAX) safestride_total++;
         if (committed_val != predicted_val) {
             if (safestride_miss < UINT32_MAX) safestride_miss++;
-            last_misp_retire_count = retire_count; 
+            last_misp_retire_count = retire_count;
         }
     }
 
@@ -190,15 +192,17 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
         int64_t new_stride = (int64_t)(committed_val - svp[idx].retired_value);
 
         if (new_stride == svp[idx].stride) {
-            // Forward Probabilistic Counter
+            // Forward Probabilistic Counter: only bump conf with
+            // probability 1/denom for this instruction type
             uint8_t t = (inst_type < VPT_COUNT) ? inst_type : VPT_INTALU;
             uint16_t sample = lfsr_step();
             if ((sample % p_incr_denom[t]) == 0) {
                 if (svp[idx].conf < svp_conf_max) svp[idx].conf++;
             }
-        } else {
+        }
+        else {
             svp[idx].stride = new_stride;
-            svp[idx].conf   = 0;
+            svp[idx].conf = 0;
         }
 
         svp[idx].retired_value = committed_val;
@@ -207,20 +211,22 @@ void vpu_eves::train(unsigned int vpq_index, uint64_t committed_val, uint8_t ins
             assert(svp[idx].instance > 0);
             svp[idx].instance--;
         }
-    } else {
-        svp[idx].tag           = get_svp_tag(pc);
+    }
+    else {
+        // Tag miss - replace the entry
+        svp[idx].tag = get_svp_tag(pc);
         svp[idx].retired_value = committed_val;
-        svp[idx].stride        = (int64_t)committed_val;
-        svp[idx].conf          = 0;
-        svp[idx].valid         = true;
+        svp[idx].stride = (int64_t)committed_val;
+        svp[idx].conf = 0;
+        svp[idx].valid = true;
 
-        unsigned int save_head  = vpq_head;
+        unsigned int save_head = vpq_head;
         bool save_phase = vpq_head_phase;
 
         vpq_head++;
-        if (vpq_head == vpq_size) { 
-            vpq_head = 0; 
-            vpq_head_phase = !vpq_head_phase; 
+        if (vpq_head == vpq_size) {
+            vpq_head = 0;
+            vpq_head_phase = !vpq_head_phase;
         }
 
         svp[idx].instance = count_inflight_instances(idx);
@@ -267,28 +273,21 @@ void vpu_eves::print_storage(FILE *out) {
     // the SVP fields counted above. retire_count is not counted (same as
     // the VPQ pointers).
     unsigned int eves_overhead_bits = 16 + 32 + 32;
+    unsigned int total_bits = svp_total_bits + eves_overhead_bits;
+    double total_bytes = total_bits / 8.0;
+    double total_kb = total_bytes / 1024.0;
 
-    unsigned int total_bits  = svp_total_bits + eves_overhead_bits;
-    double       total_bytes = total_bits / 8.0;
-    double       total_kb    = total_bytes / 1024.0;
-
-    fprintf(out, "   EVES predictor storage accounting (SVP core + EVES overhead):\n");
+    fprintf(out, "   EVES predictor storage (SVP core + EVES overhead):\n");
     fprintf(out, "   FPC denominators: intalu=%u, fpalu=%u, load=%u\n",
             p_incr_denom[VPT_INTALU], p_incr_denom[VPT_FPALU], p_incr_denom[VPT_LOAD]);
     fprintf(out, "   One SVP entry:\n");
-    fprintf(out, "      tag           : %3u bits\n", svp_tag_bits);
-    fprintf(out, "      conf          : %3u bits\n", conf_bits);
-    fprintf(out, "      retired_value :  64 bits\n");
-    fprintf(out, "      stride        :  64 bits\n");
-    fprintf(out, "      instance ctr  : %3u bits\n", instance_bits);
-    fprintf(out, "      -------------------------\n");
-    fprintf(out, "      bits/SVP entry: %u bits\n", bits_per_entry);
+    fprintf(out, "      tag: %u bits\n", svp_tag_bits);
+    fprintf(out, "      conf: %u bits\n", conf_bits);
+    fprintf(out, "      retired_value: 64 bits\n");
+    fprintf(out, "      stride: 64 bits\n");
+    fprintf(out, "      instance ctr: %u bits\n", instance_bits);
+    fprintf(out, "      total per entry: %u bits\n", bits_per_entry);
     fprintf(out, "   SVP core: %u entries x %u bits = %u bits\n", svp_num_entries, bits_per_entry, svp_total_bits);
-    fprintf(out, "   EVES overhead:\n");
-    fprintf(out, "      LFSR state         : 16 bits\n");
-    fprintf(out, "      SafeStride total   : 32 bits\n");
-    fprintf(out, "      SafeStride miss    : 32 bits\n");
-    fprintf(out, "      EVES overhead total: %u bits\n", eves_overhead_bits);
-    fprintf(out, "   Total storage cost (bits)  = %u bits\n", total_bits);
-    fprintf(out, "   Total storage cost (bytes) = %.2f B (%.2f KB)\n", total_bytes, total_kb);
+    fprintf(out, "   EVES overhead: LFSR(16) + SafeStride total(32) + SafeStride miss(32) = %u bits\n", eves_overhead_bits);
+    fprintf(out, "   Total: %u bits (%.2f B, %.2f KB)\n", total_bits, total_bytes, total_kb);
 }
