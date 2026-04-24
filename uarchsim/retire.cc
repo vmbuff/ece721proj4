@@ -4,17 +4,6 @@
 #include "vpu_iface.h"
 
 
-// Coarse instruction-type classification for the EVES per-type FPC table.
-// Three buckets mirroring the predINTALU / predFPALU / predLOAD eligibility
-// booleans in parameters.h. The baseline vpu ignores the returned value so
-// using this for all trainings is safe regardless of which predictor is active.
-static inline uint8_t classify_vp_inst_type(const payload_t &p) {
-   if (IS_LOAD(p.flags))  return VPT_LOAD;
-   if (IS_FPALU(p.flags)) return VPT_FPALU;
-   return VPT_INTALU;
-}
-
-
 void pipeline_t::retire(size_t &instret) {
    bool head_valid;
    bool completed, exception, load_viol, br_misp, val_misp, load, store, branch, amo, csr;
@@ -497,4 +486,22 @@ bool pipeline_t::execute_csr() {
    }
 
    return (exception);
+}
+
+
+// Project 4 - Competition
+// This function is used to classify instructions for the EVES predictor
+static inline uint8_t classify_vp_inst_type(const payload_t &p) {
+   // If instruction is a LOAD, return the LOAD bucket
+   if (IS_LOAD(p.flags)) {
+      return VPT_LOAD;
+   }
+
+   // If instruction is an FPALU, return the FPALU bucket
+   if (IS_FPALU(p.flags)) {
+      return VPT_FPALU;
+   }
+
+   // Default to the INTALU bucket for all other types
+   return VPT_INTALU;
 }
